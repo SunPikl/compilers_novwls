@@ -1,0 +1,37 @@
+//print num
+prnt(3);
+
+//print line
+prnt("Hello World");
+
+//print math
+prnt("Calculting 4+3");
+prnt(4+3);
+
+prnt("Calculting 4-(3)");
+prnt(4-(+3));
+
+prnt("Calculting 2*3");
+prnt(2*3);
+
+prnt("Calculting 64/4");
+prnt(64/4);
+
+prnt("Calculting -4*7");
+prnt(-4*7);
+
+prnt("2>1 as true (1)");
+prnt(2>1);
+
+prnt("2<1 as false (0)");
+prnt(2<1);
+
+//print identifier math
+nt x = 3;
+flt y = 2.5;
+
+flt z = x + y;
+
+prnt("Using variables to do integer 3 + float 2.5");
+prnt(z);
+
