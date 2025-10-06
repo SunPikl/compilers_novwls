@@ -121,7 +121,17 @@ program : (stmt)* EOF
         { printDiagnostics();}
         ; 
 
-stmt : assignStmt | printStmt | compareStmt | functStmt | loopStmt | comment; 
+stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | comment; 
+
+blockStmt : '{'
+    {
+        //create new scope
+    } 
+(stmt)* '}'
+    {
+        //end new scope
+    }
+    ;
 
 assignStmt : (dt=dataType)? 
     DNT 
@@ -188,7 +198,7 @@ printStmt : KW_PRNT '(' print=expr varC* ')' SCOLN
 
 varC : CMM factor ; 
 
-compareStmt : KW_F '(' comparison ')' '{' stmt R_CRLYB elseC? ; 
+compareStmt : KW_F '(' comparison ')' blockStmt elseC? ; 
 
 functStmt : KW_FNCTN dataType DNT '(' argC ')' '{' stmt* KW_RTN factor SCOLN '}' ; 
 
@@ -202,7 +212,7 @@ doWhile : KW_D '{' stmt* '}' KW_WHL '(' comparison ')' ;
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 
-elseC : (KW_LS '{' stmt '}') | KW_LS '{' stmt '}'elseC; 
+elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
 
 argC : dataType DNT | (factor DNT argC) | argC CMM argC ; 
 
