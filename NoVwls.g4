@@ -137,13 +137,35 @@ assignStmt : (dt=dataType)?
         Identifier newId = new Identifier();
         newId.id = currLHS;
 
-        //type check
-        if(!preexistingLHS){ //if new identity, double check data type given AND matches
-            // if(dt == null){
-            //     //error
-            // }
-            
+        //if new var
+        if(!preexistingLHS){ 
+            //double check data type given AND matches
+            if($dt.type == null){
+                error($DNT, "data type is '" + $dt.type + "'");
+            }
+
+            //set type
+            newId.type = $dt.type; 
         }
+
+        if(preexistingLHS){
+            System.out.println("DEBUG: current type is " + $expr.type);
+            System.out.println("The current DNT's type is " + mainTable.table.get(currLHS).type);
+
+            //type check 
+            if(!($expr.type.equals(mainTable.table.get(currLHS).type))){
+                error($DNT, "type mismatch for " + currLHS + "'");
+            }
+        } else {
+                System.out.println($dt.type + " and " + $expr.type);
+            if(!($expr.type.equals($dt.type))){
+                System.out.println("DEBUG issue with type match for " + currLHS + " where " + $dt.type + " not " + $expr.type);
+                error($DNT, "type mismatch for " + currLHS );
+            } 
+        }
+
+        
+
         newId.value = $expr.value;
         newId.content = $expr.content;
         newId.hasKnown = $expr.hasKnownValue;
@@ -180,7 +202,13 @@ printStmt : KW_PRNT '(' print=expr varC* ')' SCOLN
                 printStr = printStr.substring(1, printStr.length() - 1);
                System.out.println(printStr);
             } else {
-                System.out.println($print.value);
+                if($print.type.equals("flt")){ //if float, just give value (already in float form)
+                    System.out.println($print.value);
+                } else {  //if bool or 
+                    int printval = (int)(Math.abs($print.value));
+                    System.out.println(printval);
+                }
+                
             }
 
             }
@@ -225,6 +253,7 @@ expr returns [boolean hasKnownValue, String type, float value, String content]:
                 if ($b.hasKnownValue) {
                     $hasKnownValue = true;
                     $value = $b.value;
+                    $type = $b.type;
                 } else {
                     $hasKnownValue = false;
                 } 
@@ -267,6 +296,9 @@ comparisonExpr returns [boolean hasKnownValue, String type, float value] :
         } else if (opType.equals("!=") && $a.value != $b.value) {  
             $value = 1;  
         } else $value = 0;  
+        
+        //set to bool type
+        $type = "bl";
 
     }  
     )* 
@@ -289,11 +321,18 @@ additiveExpr returns [boolean hasKnownValue, String type, float value] :
             } else {
                 $value = $value - $b.value;
             }
+
+            //check if a or b are floats, change to float
+            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+                $type = "flt";
+            } else {
+                $type = "nt";
+            }
+
         } else {
             $hasKnownValue = false;
         }
 
-        
     }
     )* 
     ;
@@ -321,9 +360,20 @@ multiplicativeExpr returns [boolean hasKnownValue, String type, float value]:
             } else {
                 $value = $value / $b.value;
             }
+
+
+            //check if a or b are floats, change to float
+            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+                $type = "flt";
+            } else {
+                $type = "nt";
+            }
+
         } else {
             $hasKnownValue = false;
         }
+
+
     }
     )* 
     ; 
@@ -344,7 +394,15 @@ comparer : LSSTHN | GRTRTHN | LSSTHNREQL | GRTRTHNREQL | EQL | NTEQL;
 factor returns [boolean hasKnownValue, String type, float value, String content]: 
       NT 
         {   $hasKnownValue = true; 
-            $value = Integer.parseInt($NT.getText()); 
+
+            //type check
+            try {
+                $value = Integer.parseInt($NT.getText()); 
+            } catch (Exception e) {
+                error($NT, "the following value is not an int '" + $NT.getText() + "'");
+            }
+
+            
             $type = "nt";
         }
     | FLT 
@@ -383,6 +441,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
                 $hasKnownValue = false;
                 $type = "null";
             } else {
+                //System.out.println("DEBUG: Here type assigned to DNT " + currentId.type); //checking variable assign
                 currentId.hasBeenUsed = true;
                 $hasKnownValue = currentId.hasKnown;
                 $value = currentId.value;
@@ -396,6 +455,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
             if ($expr.hasKnownValue) {
                 $hasKnownValue = true;
                 $value = $expr.value;
+                $type = $expr.type;
             } else $hasKnownValue = false;
         }
     ; 
