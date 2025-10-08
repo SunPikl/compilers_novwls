@@ -31,7 +31,11 @@ nt x = 3;
 flt y = 2.5;
 
 flt z = x + y;
-
+f(x == 3){
+    prnt("x is 3");
+}ls{
+    prnt("reads anyway");
+}
 prnt("Using variables to do integer 3 + float 2.5");
 prnt(z);
 
