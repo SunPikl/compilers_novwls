@@ -154,6 +154,8 @@ public class NoVwlsLexer extends Lexer {
 	    //was LHS assinged before
 	    boolean preexistingLHS = false;
 
+	    Scanner scan = new Scanner(System.in);
+
 
 	public NoVwlsLexer(CharStream input) {
 		super(input);

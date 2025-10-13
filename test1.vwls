@@ -1,0 +1,7 @@
+//Type test: Good
+strng a = "Input name: ";
+prnt(a);
+strng b = scnSTRNG;
+prnt("Your name is", b);
+
+//Type test: Bad

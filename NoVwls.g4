@@ -56,6 +56,8 @@ grammar NoVwls;
 
     //was LHS assinged before
     boolean preexistingLHS = false;
+
+    Scanner scan = new Scanner(System.in);
 }
 
 //~~~~~~~~~~~~~~~~~~~ Lexer ~~~~~~~~~~~~~~~~~~
@@ -126,6 +128,8 @@ stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt |
 blockStmt : '{'
     {
         //create new scope
+
+        //
     } 
 (stmt)* '}'
     {
@@ -159,15 +163,15 @@ assignStmt : (dt=dataType)?
         }
 
         if(preexistingLHS){
-            System.out.println("DEBUG: current type is " + $expr.type);
-            System.out.println("The current DNT's type is " + mainTable.table.get(currLHS).type);
+            // System.out.println("DEBUG: current type is " + $expr.type);
+            // System.out.println("The current DNT's type is " + mainTable.table.get(currLHS).type);
 
             //type check 
             if(!($expr.type.equals(mainTable.table.get(currLHS).type))){
                 error($DNT, "type mismatch for " + currLHS + "'");
             }
         } else {
-                System.out.println($dt.type + " and " + $expr.type);
+                //System.out.println($dt.type + " and " + $expr.type);
             if(!($expr.type.equals($dt.type))){
                 System.out.println("DEBUG issue with type match for " + currLHS + " where " + $dt.type + " not " + $expr.type);
                 error($DNT, "type mismatch for " + currLHS );
@@ -187,44 +191,155 @@ assignStmt : (dt=dataType)?
         }
     | KW_SCN_NTGR 
     {
-        // // Successful RHS parse: consider variable now assigned.
-        // assigned.add(currLHS);
-        // Identifier newId = new Identifier();
-        // newId.id = currLHS;
-        // newId.value = 0;
-        // newId.hasKnown = false;
-        // newId.hasBeenUsed = false;
-        // mainTable.table.put(newId.id, newId);
-        // // Clear LHS context.
-        // currLHS = null;
+        //input
+        int input = scan.nextInt();
+        if (scan.hasNextLine()) { //if scan.nextInt causes issues
+            scan.nextLine();  
+        }   
+
+        // Successful RHS parse: consider variable now assigned.
+        assigned.add(currLHS);
+        Identifier newId = new Identifier();
+        newId.id = currLHS;
+        newId.value = input;
+        newId.type = "nt";
+        newId.hasKnown = true;
+        newId.hasBeenUsed = false;
+        mainTable.table.put(newId.id, newId);
+
+        //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
+        // Clear LHS context.
+        currLHS = null;
     }
     | KW_SCN_STRNG 
+    {
+        //input
+        String input = scan.nextLine();
+
+        // Successful RHS parse: consider variable now assigned.
+        assigned.add(currLHS);
+        Identifier newId = new Identifier();
+        newId.id = currLHS;
+        newId.content = "\"" + input + "\""; //put in string format
+        newId.type = "strng";
+        newId.hasKnown = true;
+        newId.hasBeenUsed = false;
+        mainTable.table.put(newId.id, newId);
+
+        //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
+        // Clear LHS context.
+        currLHS = null;
+    }
     | KW_SCN_FLT 
+    {
+        //input
+        float input = scan.nextFloat();
+
+        // Successful RHS parse: consider variable now assigned.
+        assigned.add(currLHS);
+        Identifier newId = new Identifier();
+        newId.id = currLHS;
+        newId.value = input;
+        newId.type = "flt";
+        newId.hasKnown = true;
+        newId.hasBeenUsed = false;
+        mainTable.table.put(newId.id, newId);
+
+        //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
+        // Clear LHS context.
+        currLHS = null;
+    }
     | KW_SCN_CHR 
+    {
+        //input
+        // if (scan.hasNextLine()) { //if scan.nextInt causes issues
+        //     scan.next();  
+        // }   
+        String input = scan.next();
+        input = String.valueOf(input.charAt(0));
+        //System.out.println("input " + input);
+
+        // Successful RHS parse: consider variable now assigned.
+        assigned.add(currLHS);
+        Identifier newId = new Identifier();
+        newId.id = currLHS;
+        newId.content = "\'" + input + "\'"; //put in string format
+        newId.type = "chr";
+        newId.hasKnown = true;
+        newId.hasBeenUsed = false;
+        mainTable.table.put(newId.id, newId);
+
+        //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
+        // Clear LHS context.
+        currLHS = null;
+    }
     | KW_SCN_BL
     ) SCOLN; 
 
-printStmt : KW_PRNT '(' print=expr varC* ')' SCOLN
+printStmt : KW_PRNT '(' print=expr 
             { 
-            if($print.content != null){
+            if(($print.type.equals("strng") || $print.type.equals("chr")) && $print.content != null){
                 String printStr = $print.content;
                 //printStr = printStr.substring(1);
                 printStr = printStr.substring(1, printStr.length() - 1);
-               System.out.println(printStr);
+               System.out.print(printStr);
             } else {
+
+                //System.out.println("DEBUG: the type is " + $print.type);
+
                 if($print.type.equals("flt")){ //if float, just give value (already in float form)
-                    System.out.println($print.value);
+                    System.out.print($print.value);
                 } else {  //if bool or 
                     int printval = (int)(Math.abs($print.value));
-                    System.out.println(printval);
+                    System.out.print(printval);
                 }
                 
             }
 
             }
+            (more=varC
+            { 
+            if(($more.type.equals("strng") || $more.type.equals("chr")) && $more.content != null){
+                String printStr = $more.content;
+                //System.out.println("precut " + printStr);
+                //printStr = printStr.substring(1);
+                printStr = printStr.substring(1, printStr.length() - 1);
+               System.out.print(printStr);
+            } else {
+
+                //System.out.println("DEBUG: the type is " + $more.type);
+
+                if($more.type.equals("flt")){ //if float, just give value (already in float form)
+                    System.out.print($more.value);
+                } else {  //if bool or 
+                    int printval = (int)(Math.abs($more.value));
+                    System.out.print(printval);
+                }
+                
+            }
+
+            }
+            )* 
+            {
+                System.out.print("\n");
+            }
+            ')' SCOLN
+            
             ; 
 
-varC : CMM factor ; 
+varC returns [boolean hasKnownValue, String type, float value, String content]: 
+            CMM expr 
+            {
+                if ($expr.hasKnownValue) {
+                    $hasKnownValue = true;
+                    $value = $expr.value;
+                    $content = $expr.content;
+                    $type = $expr.type;
+                } else {
+                    $hasKnownValue = false;
+                } 
+            }
+            ; 
 
 compareStmt : KW_F '(' comparison ')' blockStmt elseC? ; 
 
@@ -421,15 +536,22 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
             $type = "flt";
         }
     | BL 
-        // { $hasKnownValue = true; 
-        //   if(BL.getText().equals("true")){
-        //     $value = 1; //set true
-        //   } else if(BL.getText().equals("false")){
-        //     $value = 0; //set false
-        //   } else {
-        //     $value = Integer.parseInt($BL.getText());  //autosets to 0 or 1
-        //   }
-        // }
+        { 
+            // $hasKnownValue = true; 
+            // $type = "bl";
+            // if(BL.getText().equals("true")){
+            //     $value = 1; //set true
+            // } else if(BL.getText().equals("false")){
+            //     $value = 0; //set false
+            // } else {
+            //     $value = Integer.parseInt($BL.getText());  //autosets to 0 or 1
+            // }
+        }
+    | CHR
+        {   $hasKnownValue = true; 
+            $content = $CHR.getText();
+            $type = "chr";
+        }
     | STRNG 
         {   $hasKnownValue = true; 
             $content = $STRNG.getText();
@@ -456,6 +578,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
                 $hasKnownValue = currentId.hasKnown;
                 $value = currentId.value;
                 $type = currentId.type;
+                $content = currentId.content;
             }
         }
     | array 
