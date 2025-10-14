@@ -23,6 +23,9 @@ grammar NoVwls;
     }
     SymbolTable mainTable = new SymbolTable();
 
+    //Scope handler
+    Stack<SymbolTable> scopeStack = new Stack<>();
+
     //Variables Assigned Once
     Set<String> assigned = new HashSet<>();
 
@@ -119,7 +122,8 @@ DNT : [a-zA-Z][a-zA-Z0-9_]* ;    // match lower-case identifiers
 
 
 //~~~~~~~~~~~~~~~~~~~ EBNF Grammar ~~~~~~~~~~~~~~~~~~
-program : (stmt)* EOF
+program : {scopeStack.push(mainTable);}
+        (stmt)* EOF
         { printDiagnostics();}
         ; 
 
@@ -127,13 +131,12 @@ stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt |
 
 blockStmt : '{'
     {
-        //create new scope
-
-        //
+        SymbolTable temp = scopeStack.peek();
+        scopeStack.push(temp);
     } 
 (stmt)* '}'
     {
-        //end new scope
+        scopeStack.pop();
     }
     ;
 
@@ -141,7 +144,8 @@ assignStmt : (dt=dataType)?
     DNT 
     {
         currLHS = $DNT.getText();
-        preexistingLHS = mainTable.table.containsKey(currLHS);
+        //preexistingLHS = mainTable.table.containsKey(currLHS);
+        preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
 
     }
     SSGN ( expr 
@@ -184,7 +188,8 @@ assignStmt : (dt=dataType)?
         newId.content = $expr.content;
         newId.hasKnown = $expr.hasKnownValue;
         newId.hasBeenUsed = false;
-        mainTable.table.put(newId.id, newId);
+        //mainTable.table.put(newId.id, newId);
+        scopeStack.peek().table.put(newId.id, newId);
 
         // Clear LHS 
         currLHS = null;
@@ -351,15 +356,27 @@ varC returns [boolean hasKnownValue, String type, float value, String content]:
 
 compareStmt : KW_F '(' comparison ')' blockStmt elseC? ; 
 
-functStmt : KW_FNCTN dataType DNT '(' argC ')' '{' stmt* KW_RTN factor SCOLN '}' ; 
+functStmt : KW_FNCTN dataType DNT '(' argC? ')' '{'
+    {
+        SymbolTable temp = new SymbolTable();
+        //temp.table = (HashMap<String, Identifier>) (scopeStack.peek().table.clone());
+        temp.table = new HashMap<String, Identifier>(scopeStack.peek().table);
+        scopeStack.push(temp);
+        System.out.println("new scope");
+    }
+ stmt* KW_RTN factor SCOLN '}'
+    {
+        scopeStack.pop();
+        System.out.println("scope deleted");
+    } ; 
 
 loopStmt : while | for | doWhile; 
 
-while : KW_WHL '(' comparison ')' '{' stmt* '}' ;  
+while : KW_WHL '(' comparison ')' blockStmt ;  
 
-for : KW_FR '(' assignStmt comparison SCOLN forLoopInc ')' '{' stmt* '}' ; 
+for : KW_FR '(' assignStmt comparison SCOLN forLoopInc ')' blockStmt ; 
 
-doWhile : KW_D '{' stmt* '}' KW_WHL '(' comparison ')' ; 
+doWhile : KW_D blockStmt KW_WHL '(' comparison ')' ; 
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 
@@ -581,7 +598,8 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
             String id = $DNT.getText();
             used.add(id);
 
-            Identifier currentId = mainTable.table.get(id);
+            //Identifier currentId = mainTable.table.get(id);
+            Identifier currentId = scopeStack.peek().table.get(id);
             if (currentId == null) {
                 // Variable used before declaration error
                 if (currLHS != null && !preexistingLHS && id.equals(currLHS)) {
