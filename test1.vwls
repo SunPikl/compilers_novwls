@@ -4,4 +4,12 @@ prnt(a);
 strng b = scnSTRNG;
 prnt("Your name is", b);
 
+prnt("Age: ");
+nt c = scnNT;
+prnt("You are ", c, " years old.");
+
+prnt("Last initial: ");
+nt c = scnNT;
+//prnt("You are ", c, " years old.");
+
 //Type test: Bad

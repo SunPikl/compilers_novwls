@@ -191,11 +191,22 @@ assignStmt : (dt=dataType)?
         }
     | KW_SCN_NTGR 
     {
+        //new ID
+
+
         //input
-        int input = scan.nextInt();
-        if (scan.hasNextLine()) { //if scan.nextInt causes issues
-            scan.nextLine();  
-        }   
+        try{
+            int input = scan.nextInt();
+            if (scan.hasNextLine()) { //if scan.nextInt causes issues
+                scan.nextLine();  
+            }  
+            
+             
+
+        } catch(InputMismatchException e){
+
+        }
+        
 
         // Successful RHS parse: consider variable now assigned.
         assigned.add(currLHS);
@@ -251,10 +262,7 @@ assignStmt : (dt=dataType)?
     }
     | KW_SCN_CHR 
     {
-        //input
-        // if (scan.hasNextLine()) { //if scan.nextInt causes issues
-        //     scan.next();  
-        // }   
+        //input 
         String input = scan.next();
         input = String.valueOf(input.charAt(0));
         //System.out.println("input " + input);
@@ -385,7 +393,18 @@ expr returns [boolean hasKnownValue, String type, float value, String content]:
             }
         ; 
 
-comparison : additiveExpr comparer additiveExpr;
+comparison returns [boolean hasKnownValue, float value] : 
+    a=comparisonExpr
+    {
+        //check if comparison gives a bool (thus comparing values)
+        if(!($a.type.equals("bl"))){
+            error($a.type, "this sequence does not produce a boolean '" );
+        } else {
+            $hasKnownValue = true;
+            $value = $a.value;
+        }
+    }
+    ;
 
 comparisonExpr returns [boolean hasKnownValue, String type, float value] : 
     a=additiveExpr   
