@@ -120,6 +120,9 @@ public class NoVwlsLexer extends Lexer {
 	    }
 	    SymbolTable mainTable = new SymbolTable();
 
+	    //Scope handler
+	    Stack<SymbolTable> scopeStack = new Stack<>();
+
 	    //Variables Assigned Once
 	    Set<String> assigned = new HashSet<>();
 

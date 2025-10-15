@@ -1,0 +1,19 @@
+//intakes input and prints out
+prnt("input one float");
+nt a = 8;
+flt b = 12.5;
+flt c = scnFLT;
+
+flt sum = a + b * c;
+
+bl test = false;
+prnt("bool",test);
+
+f(sum > 0.0){
+    prnt("The following calculation is positive ",a,"+",b,"*",c,"=",sum);
+} 
+//ls {
+    //prnt("The following calculation is negative ",a,"+",b,"*",c,"=",sum);
+//}
+
+

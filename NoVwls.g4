@@ -166,6 +166,7 @@ assignStmt : (dt=dataType)?
             newId.type = $dt.type; 
         }
 
+        boolean error = false;
         if(preexistingLHS){
             // System.out.println("DEBUG: current type is " + $expr.type);
             // System.out.println("The current DNT's type is " + mainTable.table.get(currLHS).type);
@@ -173,31 +174,41 @@ assignStmt : (dt=dataType)?
             //type check 
             if(!($expr.type.equals(mainTable.table.get(currLHS).type))){
                 error($DNT, "type mismatch for " + currLHS + "'");
+                error = true;
             }
         } else {
                 //System.out.println($dt.type + " and " + $expr.type);
             if(!($expr.type.equals($dt.type))){
-                System.out.println("DEBUG issue with type match for " + currLHS + " where " + $dt.type + " not " + $expr.type);
+                //System.out.println("DEBUG issue with type match for " + currLHS + " where " + $dt.type + " not " + $expr.type);
                 error($DNT, "type mismatch for " + currLHS );
+                error = true;
             } 
         }
 
-        
+        if(!error){
+            newId.value = $expr.value;
+            newId.content = $expr.content;
+            newId.hasKnown = $expr.hasKnownValue;
+            newId.hasBeenUsed = false;
+            //mainTable.table.put(newId.id, newId);
+            scopeStack.peek().table.put(newId.id, newId);
+        } else {
+            // newId.value = $expr.value;
+            // newId.content = $expr.content;
+            newId.hasKnown = false;
+            newId.hasBeenUsed = false;
+            //mainTable.table.put(newId.id, newId);
+            scopeStack.peek().table.put(newId.id, newId);
+        }
 
-        newId.value = $expr.value;
-        newId.content = $expr.content;
-        newId.hasKnown = $expr.hasKnownValue;
-        newId.hasBeenUsed = false;
-        //mainTable.table.put(newId.id, newId);
-        scopeStack.peek().table.put(newId.id, newId);
+        
 
         // Clear LHS 
         currLHS = null;
         }
     | KW_SCN_NTGR 
     {
-        //new ID
-
+        
 
         //input
         try{
@@ -206,26 +217,27 @@ assignStmt : (dt=dataType)?
                 scan.nextLine();  
             }  
             
-             
+             // Successful RHS parse: consider variable now assigned.
+            assigned.add(currLHS);
+            Identifier newId = new Identifier();
+            newId.id = currLHS;
+            newId.value = input;
+            newId.type = "nt";
+            newId.hasKnown = true;
+            newId.hasBeenUsed = false;
+            mainTable.table.put(newId.id, newId);
 
-        } catch(InputMismatchException e){
+            //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
+            // Clear LHS context.
+            currLHS = null;
+
+        } catch(Exception e){
+            System.err.println("Input was not an integer.");
 
         }
         
 
-        // Successful RHS parse: consider variable now assigned.
-        assigned.add(currLHS);
-        Identifier newId = new Identifier();
-        newId.id = currLHS;
-        newId.value = input;
-        newId.type = "nt";
-        newId.hasKnown = true;
-        newId.hasBeenUsed = false;
-        mainTable.table.put(newId.id, newId);
-
-        //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
-        // Clear LHS context.
-        currLHS = null;
+        
     }
     | KW_SCN_STRNG 
     {
@@ -291,7 +303,9 @@ assignStmt : (dt=dataType)?
 
 printStmt : KW_PRNT '(' print=expr 
             { 
-            if(($print.type.equals("strng") || $print.type.equals("chr")) && $print.content != null){
+            if($print.type == null){
+                System.err.println("Error: cannot print null types");
+            }else if(($print.type.equals("strng") || $print.type.equals("chr")) && $print.content != null){
                 String printStr = $print.content;
                 //printStr = printStr.substring(1);
                 printStr = printStr.substring(1, printStr.length() - 1);
@@ -312,7 +326,9 @@ printStmt : KW_PRNT '(' print=expr
             }
             (more=varC
             { 
-            if(($more.type.equals("strng") || $more.type.equals("chr")) && $more.content != null){
+            if($print.type == null){
+                System.err.println("Error: cannot print null types");
+            }else if(($more.type.equals("strng") || $more.type.equals("chr")) && $more.content != null){
                 String printStr = $more.content;
                 //System.out.println("precut " + printStr);
                 //printStr = printStr.substring(1);
@@ -354,7 +370,13 @@ varC returns [boolean hasKnownValue, String type, float value, String content]:
             }
             ; 
 
-compareStmt : KW_F '(' comparison ')' blockStmt elseC? ; 
+compareStmt : KW_F '(' a=comparison ')' 
+            {
+                //if a true, perform block
+                
+            }
+
+             blockStmt elseC? ; 
 
 functStmt : KW_FNCTN dataType DNT '(' argC? ')' '{'
     {
@@ -415,7 +437,7 @@ comparison returns [boolean hasKnownValue, float value] :
     {
         //check if comparison gives a bool (thus comparing values)
         if(!($a.type.equals("bl"))){
-            error($a.type, "this sequence does not produce a boolean '" );
+            System.err.println("Input was not an integer.");
         } else {
             $hasKnownValue = true;
             $value = $a.value;
@@ -573,15 +595,15 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
         }
     | BL 
         { 
-            // $hasKnownValue = true; 
-            // $type = "bl";
-            // if(BL.getText().equals("true")){
-            //     $value = 1; //set true
-            // } else if(BL.getText().equals("false")){
-            //     $value = 0; //set false
-            // } else {
-            //     $value = Integer.parseInt($BL.getText());  //autosets to 0 or 1
-            // }
+            $hasKnownValue = true; 
+            $type = "bl";
+            if($BL.getText().equals("true")){
+                $value = 1; //set true
+            } else if($BL.getText().equals("false")){
+                $value = 0; //set false
+            } else {
+                $value = Integer.parseInt($BL.getText());  //autosets to 0 or 1
+            }
         }
     | CHR
         {   $hasKnownValue = true; 

@@ -1,0 +1,16 @@
+//Creates a scope, inits variables
+strng z = "Hello ";
+
+Fnctn nt old(){
+    nt nknwn = 40;
+    prnt(z,nknwn);
+    rtn 1;
+}
+
+//prnt(nknwn);
+
+Fnctn flt new(){
+    nt nknwn = 3;
+    prnt(z,nknwn);
+    rtn nknwn;
+}
