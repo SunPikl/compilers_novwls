@@ -131,7 +131,8 @@ stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt |
 
 blockStmt : '{'
     {
-        scopeStack.push(new SymbolTable());
+        SymbolTable temp = scopeStack.peek();
+        scopeStack.push(temp);
     } 
 (stmt)* '}'
     {
@@ -224,8 +225,7 @@ assignStmt : (dt=dataType)?
             newId.type = "nt";
             newId.hasKnown = true;
             newId.hasBeenUsed = false;
-            //mainTable.table.put(newId.id, newId);
-            scopeStack.peek().table.put(newId.id, newId);
+            mainTable.table.put(newId.id, newId);
 
             //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
             // Clear LHS context.
@@ -252,8 +252,7 @@ assignStmt : (dt=dataType)?
         newId.type = "strng";
         newId.hasKnown = true;
         newId.hasBeenUsed = false;
-        //mainTable.table.put(newId.id, newId);
-        scopeStack.peek().table.put(newId.id, newId);
+        mainTable.table.put(newId.id, newId);
 
         //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
         // Clear LHS context.
@@ -272,8 +271,7 @@ assignStmt : (dt=dataType)?
         newId.type = "flt";
         newId.hasKnown = true;
         newId.hasBeenUsed = false;
-        //mainTable.table.put(newId.id, newId);
-        scopeStack.peek().table.put(newId.id, newId);
+        mainTable.table.put(newId.id, newId);
 
         //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
         // Clear LHS context.
@@ -294,8 +292,7 @@ assignStmt : (dt=dataType)?
         newId.type = "chr";
         newId.hasKnown = true;
         newId.hasBeenUsed = false;
-        //mainTable.table.put(newId.id, newId);
-        scopeStack.peek().table.put(newId.id, newId);
+        mainTable.table.put(newId.id, newId);
 
         //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
         // Clear LHS context.
@@ -383,7 +380,11 @@ compareStmt : KW_F '(' a=comparison ')'
 
 functStmt : KW_FNCTN dataType DNT '(' argC? ')' '{'
     {
-        scopeStack.push(new SymbolTable());
+        SymbolTable temp = new SymbolTable();
+        //temp.table = (HashMap<String, Identifier>) (scopeStack.peek().table.clone());
+        temp.table = new HashMap<String, Identifier>(scopeStack.peek().table);
+        scopeStack.push(temp);
+        System.out.println("new scope");
     }
  stmt* KW_RTN factor SCOLN '}'
     {
@@ -620,14 +621,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
             used.add(id);
 
             //Identifier currentId = mainTable.table.get(id);
-            Identifier currentId = null;
-            for(int i = 0; i < scopeStack.size();i++){
-                currentId = scopeStack.get(scopeStack.size()-1-i).table.get(id);
-                if(currentId != null){
-                    break;
-                }
-            }
-            
+            Identifier currentId = scopeStack.peek().table.get(id);
             if (currentId == null) {
                 // Variable used before declaration error
                 if (currLHS != null && !preexistingLHS && id.equals(currLHS)) {
