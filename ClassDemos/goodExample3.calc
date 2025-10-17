@@ -1,0 +1,8 @@
+# Compute the volume of a cylinder (sort of)
+pi = 355 / 113   # A rough approximation (about 6 decimal places)
+radius = readInteger
+height = readInteger
+r2 = radius * radius
+base_area = pi * r2
+volume = base_area * height
+print(volume)
