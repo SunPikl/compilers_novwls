@@ -1,0 +1,14 @@
+print(3+4)        # Should print 7.0
+print(12+5*2)     # Should print 22.0
+print(3/5-6/4)    # Should print -0.9
+print(12/(4-2*2)) # Should be an error!
+x = 12*5          # Should store 60.0 into variable x
+print(x)          # Should print 60.0 now!
+y = readInteger   # y has an unknown value
+print(5+y)        # Value to print is unknown (since y is unknown)
+z = 2*x + 12 - 15 # z should store 117.0 (known value)
+a = z * y + 13    # a would have an unknown value (since y is unknown)
+print(z)          # prints 117.0
+print(a)          # Can't print - unknown value
+b = b + 1         # Error - and unknown value for b
+print(b)          # Can't print, unknown value

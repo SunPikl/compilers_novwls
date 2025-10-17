@@ -36,10 +36,11 @@ f(x == 3){
 }ls{
     prnt("reads anyway");
 }
+
 nt nknwn = 100;
 Fnctn nt ll(){
     nt nknwn = 4;
-    prnt(nknwn);
+    prnt(nknwn)
     prnt(z);
     rtn 1;
 }

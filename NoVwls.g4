@@ -226,7 +226,6 @@ assignStmt : (dt=dataType)?
             newId.type = "nt";
             newId.hasKnown = true;
             newId.hasBeenUsed = false;
-            //mainTable.table.put(newId.id, newId);
             scopeStack.peek().table.put(newId.id, newId);
 
             //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
@@ -254,7 +253,6 @@ assignStmt : (dt=dataType)?
         newId.type = "strng";
         newId.hasKnown = true;
         newId.hasBeenUsed = false;
-        //mainTable.table.put(newId.id, newId);
         scopeStack.peek().table.put(newId.id, newId);
 
         //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
@@ -274,7 +272,6 @@ assignStmt : (dt=dataType)?
         newId.type = "flt";
         newId.hasKnown = true;
         newId.hasBeenUsed = false;
-        //mainTable.table.put(newId.id, newId);
         scopeStack.peek().table.put(newId.id, newId);
 
         //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
@@ -296,7 +293,6 @@ assignStmt : (dt=dataType)?
         newId.type = "chr";
         newId.hasKnown = true;
         newId.hasBeenUsed = false;
-        //mainTable.table.put(newId.id, newId);
         scopeStack.peek().table.put(newId.id, newId);
 
         //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
@@ -661,7 +657,6 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
                     break;
                 }
             }
-            
             if (currentId == null) {
                 // Variable used before declaration error
                 if (currLHS != null && !preexistingLHS && id.equals(currLHS)) {
