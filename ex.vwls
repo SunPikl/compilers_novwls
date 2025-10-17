@@ -36,13 +36,15 @@ f(x == 3){
 }ls{
     prnt("reads anyway");
 }
+nt nknwn = 100;
 Fnctn nt ll(){
     nt nknwn = 4;
+    prnt(nknwn);
     prnt(z);
     rtn 1;
 }
 
-//prnt(nknwn);
+prnt(nknwn);
 
 prnt("Using variables to do integer 3 + float 2.5");
 prnt(z);
