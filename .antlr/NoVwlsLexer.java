@@ -112,6 +112,9 @@ public class NoVwlsLexer extends Lexer {
 	        String type;  //type
 	        boolean hasKnown; // Is  value known or not
 	        boolean hasBeenUsed;  // Has id been used 
+
+	        //function
+	        boolean isFunction; //if DNT is a function
 	    }
 
 	    //Symbol Table

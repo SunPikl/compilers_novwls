@@ -15,6 +15,9 @@ grammar NoVwls;
         String type;  //type
         boolean hasKnown; // Is  value known or not
         boolean hasBeenUsed;  // Has id been used 
+
+        //function
+        boolean isFunction; //if DNT is a function
     }
 
     //Symbol Table
@@ -127,7 +130,7 @@ program : {scopeStack.push(mainTable);}
         { printDiagnostics();}
         ; 
 
-stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | comment; 
+stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | functCall SCOLN | comment; 
 
 blockStmt : '{'
     {
@@ -207,7 +210,6 @@ assignStmt : (dt=dataType)?
         }
     | KW_SCN_NTGR 
     {
-        
 
         //input
         try{
@@ -301,7 +303,6 @@ assignStmt : (dt=dataType)?
         // Clear LHS context.
         currLHS = null;
     }
-    | KW_SCN_BL
     ) SCOLN; 
 
 printStmt : KW_PRNT '(' print=expr 
@@ -375,12 +376,36 @@ varC returns [boolean hasKnownValue, String type, float value, String content]:
 
 compareStmt : KW_F '(' a=comparison ')' blockStmt elseC? ; 
 
-functStmt : KW_FNCTN dataType DNT '(' (argC (CMM argC)*)? ')' '{'
+functStmt : KW_FNCTN dataType DNT '(' (dt=dataType DNT (CMM dt2=dataType DNT)*)? ')' '{'
     {
+
         scopeStack.push(new SymbolTable());
+
+        //add to function table
+        Identifier function = new Identifier();
+        function.id = $DNT.getText();
+        function.type = $dataType.type;
+        function.isFunction = true;
+
+        //store args??
+        
     }
  stmt* KW_RTN factor SCOLN '}'
     {
+        //attach funct value 
+        if(!($dataType.type.equals($factor.type))){
+            //is not returning same data type
+            error($DNT, "Type incompatability between function and return value");
+        } else {
+            if(($factor.type.equals("strng") || $factor.type.equals("chr"))){
+                //mainTable.table.get($DNT.getText()).content = $factor.content;
+            } else {
+                //mainTable.table.get($DNT.getText()).value = $factor.value;
+            }
+            
+        }
+
+        //end scope
         scopeStack.pop();
         System.out.println("scope deleted");
     } ; 
@@ -397,11 +422,23 @@ comment :  CMMNT_LN | CMMNT_BLCK ;
 
 elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
 
-argC : dataType DNT 
+argC : dt=dataType DNT 
         {
-            currLHS = $DNT.getText();
-            //preexistingLHS = mainTable.table.containsKey(currLHS);
-            preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
+            //create DNT without value, doesnt matter if name repeated UNLESS in funct scope
+            // currLHS = $DNT.getText();
+            // // preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
+            // Identifier parameter = new Identifier();
+            // parameter.id = currLHS;
+            // parameter.type = 
+            // if($dt.type == null){
+            //     error($DNT, "data type is '" + $dt.type + "'");
+            // }
+
+            // //set type
+            // newId.type = $dt.type;
+
+            //add to function scope
+            
         }
         //| (factor DNT argC) | argC CMM argC 
         ; 
@@ -431,6 +468,8 @@ expr returns [boolean hasKnownValue, String type, float value, String content]:
                 } 
             }
         ; 
+
+        
 
 comparison returns [boolean hasKnownValue, float value] : 
     a=comparisonExpr
@@ -578,13 +617,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
       NT 
         {   $hasKnownValue = true; 
 
-            //type check
-            try {
-                $value = Integer.parseInt($NT.getText()); 
-            } catch (Exception e) {
-                error($NT, "the following value is not an int '" + $NT.getText() + "'");
-            }
-
+            $value = Integer.parseInt($NT.getText()); 
             
             $type = "nt";
         }
@@ -654,9 +687,57 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
             if ($expr.hasKnownValue) {
                 $hasKnownValue = true;
                 $value = $expr.value;
+                $content = $expr.content;
                 $type = $expr.type;
             } else $hasKnownValue = false;
         }
+    | functCall
+    {
+         if ($functCall.hasKnownValue) {
+            $hasKnownValue = true;
+            $value = $functCall.value;
+            $type = $functCall.type;
+            $content = $functCall.content;
+        } else $hasKnownValue = false;
+    }
+    ; 
+
+functCall returns [boolean hasKnownValue, String type, float value, String content]: 
+    DNT '(' (factor (CMM factor)*)? ')'
+    {
+        //check if DNT is in function
+        String id = $DNT.getText();
+        used.add(id);
+
+        Identifier currentId = null;
+        for(int i = 0; i < scopeStack.size();i++){
+            currentId = scopeStack.get(scopeStack.size()-1-i).table.get(id);
+            if(currentId != null){
+                break;
+            }
+        }
+        
+        //check if the DNT function name is unique
+        if (currentId == null) {
+            // function does not exist
+            error($DNT, "Function '" + $DNT.getText() + "' does not exist.");
+        } else {
+            // function exists
+            currentId.hasBeenUsed = true;
+            $hasKnownValue = currentId.hasKnown;
+
+            //sets value, should be whatever is returned into the function DNT
+            $value = currentId.value;
+            $type = currentId.type;
+            $content = currentId.content;
+
+            //check params
+            
+        }
+
+        //check if factor matches type set in function
+        //assign if so, error if not
+    }
     ; 
 
 dataType returns [String type]:  
