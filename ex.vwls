@@ -47,3 +47,4 @@ Fnctn nt ll(){
 prnt("Using variables to do integer 3 + float 2.5");
 prnt(z);
 
+ll();

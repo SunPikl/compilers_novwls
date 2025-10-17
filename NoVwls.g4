@@ -370,15 +370,9 @@ varC returns [boolean hasKnownValue, String type, float value, String content]:
             }
             ; 
 
-compareStmt : KW_F '(' a=comparison ')' 
-            {
-                //if a true, perform block
-                
-            }
+compareStmt : KW_F '(' a=comparison ')' blockStmt elseC? ; 
 
-             blockStmt elseC? ; 
-
-functStmt : KW_FNCTN dataType DNT '(' argC? ')' '{'
+functStmt : KW_FNCTN dataType DNT '(' (argC (CMM argC)*)? ')' '{'
     {
         SymbolTable temp = new SymbolTable();
         //temp.table = (HashMap<String, Identifier>) (scopeStack.peek().table.clone());
@@ -404,7 +398,14 @@ comment :  CMMNT_LN | CMMNT_BLCK ;
 
 elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
 
-argC : dataType DNT | (factor DNT argC) | argC CMM argC ; 
+argC : dataType DNT 
+        {
+            currLHS = $DNT.getText();
+            //preexistingLHS = mainTable.table.containsKey(currLHS);
+            preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
+        }
+        //| (factor DNT argC) | argC CMM argC 
+        ; 
 
 forLoopInc : DNT SSGN additiveExpr | DNT'++' | DNT'--' ;
 
