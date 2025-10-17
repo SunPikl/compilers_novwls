@@ -374,16 +374,20 @@ compareStmt : KW_F '(' a=comparison ')' blockStmt elseC? ;
 
 functStmt : KW_FNCTN dataType DNT '(' (dt=dataType DNT (CMM dt2=dataType DNT)*)? ')' '{'
     {
-
-        scopeStack.push(new SymbolTable());
-
         //add to function table
         Identifier function = new Identifier();
         function.id = $DNT.getText();
         function.type = $dataType.type;
         function.isFunction = true;
+        function.hasBeenUsed = false;
+        function.hasKnown = true;
+        
 
-        //store args??
+        //store args?? --> in symbol table?
+
+        scopeStack.peek().table.put(function.id, function);
+        scopeStack.push(new SymbolTable());
+
         
     }
  stmt* KW_RTN factor SCOLN '}'

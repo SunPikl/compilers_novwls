@@ -40,7 +40,7 @@ f(x == 3){
 nt nknwn = 100;
 Fnctn nt ll(){
     nt nknwn = 4;
-    prnt(nknwn)
+    prnt(nknwn);
     prnt(z);
     rtn 1;
 }

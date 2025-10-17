@@ -550,7 +550,6 @@ public class NoVwlsParser extends Parser {
 				            newId.type = "nt";
 				            newId.hasKnown = true;
 				            newId.hasBeenUsed = false;
-				            //mainTable.table.put(newId.id, newId);
 				            scopeStack.peek().table.put(newId.id, newId);
 
 				            //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
@@ -583,7 +582,6 @@ public class NoVwlsParser extends Parser {
 				        newId.type = "strng";
 				        newId.hasKnown = true;
 				        newId.hasBeenUsed = false;
-				        //mainTable.table.put(newId.id, newId);
 				        scopeStack.peek().table.put(newId.id, newId);
 
 				        //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
@@ -608,7 +606,6 @@ public class NoVwlsParser extends Parser {
 				        newId.type = "flt";
 				        newId.hasKnown = true;
 				        newId.hasBeenUsed = false;
-				        //mainTable.table.put(newId.id, newId);
 				        scopeStack.peek().table.put(newId.id, newId);
 
 				        //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
@@ -635,7 +632,6 @@ public class NoVwlsParser extends Parser {
 				        newId.type = "chr";
 				        newId.hasKnown = true;
 				        newId.hasBeenUsed = false;
-				        //mainTable.table.put(newId.id, newId);
 				        scopeStack.peek().table.put(newId.id, newId);
 
 				        //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
@@ -981,16 +977,20 @@ public class NoVwlsParser extends Parser {
 			setState(158);
 			match(L_CRLYB);
 
-
-			        scopeStack.push(new SymbolTable());
-
 			        //add to function table
 			        Identifier function = new Identifier();
 			        function.id = ((FunctStmtContext)_localctx).DNT.getText();
 			        function.type = ((FunctStmtContext)_localctx).dataType.type;
 			        function.isFunction = true;
+			        function.hasBeenUsed = false;
+			        function.hasKnown = true;
+			        
 
-			        //store args??
+			        //store args?? --> in symbol table?
+
+			        scopeStack.peek().table.put(function.id, function);
+			        scopeStack.push(new SymbolTable());
+
 			        
 			    
 			setState(163);
@@ -2166,7 +2166,6 @@ public class NoVwlsParser extends Parser {
 				                    break;
 				                }
 				            }
-				            
 				            if (currentId == null) {
 				                // Variable used before declaration error
 				                if (currLHS != null && !preexistingLHS && id.equals(currLHS)) {
