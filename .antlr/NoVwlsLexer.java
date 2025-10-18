@@ -114,7 +114,8 @@ public class NoVwlsLexer extends Lexer {
 	        boolean hasBeenUsed;  // Has id been used 
 
 	        //function
-	        boolean isFunction; //if DNT is a function
+	        boolean isFunction = false; //if DNT is a function
+	        List<Identifier> parameters = new ArrayList<>();
 	    }
 
 	    //Symbol Table
@@ -125,7 +126,7 @@ public class NoVwlsLexer extends Lexer {
 
 	    //Scope handler
 	    Stack<SymbolTable> scopeStack = new Stack<>();
-
+	    
 	    //Variables Assigned Once
 	    Set<String> assigned = new HashSet<>();
 

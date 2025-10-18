@@ -17,7 +17,8 @@ grammar NoVwls;
         boolean hasBeenUsed;  // Has id been used 
 
         //function
-        boolean isFunction; //if DNT is a function
+        boolean isFunction = false; //if DNT is a function
+        List<Identifier> parameters = new ArrayList<>();
     }
 
     //Symbol Table
@@ -28,7 +29,7 @@ grammar NoVwls;
 
     //Scope handler
     Stack<SymbolTable> scopeStack = new Stack<>();
-
+    
     //Variables Assigned Once
     Set<String> assigned = new HashSet<>();
 
@@ -372,35 +373,84 @@ varC returns [boolean hasKnownValue, String type, float value, String content]:
 
 compareStmt : KW_F '(' a=comparison ')' blockStmt elseC? ; 
 
-functStmt : KW_FNCTN dataType DNT '(' (dt=dataType DNT (CMM dt2=dataType DNT)*)? ')' '{'
+functStmt : KW_FNCTN d=dataType a=DNT 
     {
         //add to function table
         Identifier function = new Identifier();
-        function.id = $DNT.getText();
-        function.type = $dataType.type;
+        function.id = $a.getText();
+        function.type = $d.type;
         function.isFunction = true;
         function.hasBeenUsed = false;
         function.hasKnown = true;
         
-
-        //store args?? --> in symbol table?
-
+        //store funct
         scopeStack.peek().table.put(function.id, function);
+
+        //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
+
+    }
+    '(' (dt=dataType b=DNT 
+    {
+        //store arg
+        Identifier firstP = new Identifier();
+        firstP.type = $dt.type;
+        firstP.id = $b.getText();
+        firstP.hasKnown = false;
+        firstP.hasBeenUsed = false;
+
+        //add to list
+        scopeStack.peek().table.get($a.getText()).parameters.add(firstP);
+    }
+    (CMM dt2=dataType c=DNT
+    {
+        //store arg
+        Identifier nextP = new Identifier();
+        nextP.type = $dt2.type;
+        nextP.id = $c.getText();
+        nextP.hasKnown = false;
+        nextP.hasBeenUsed = false;
+
+        //add to list
+        scopeStack.peek().table.get($a.getText()).parameters.add(nextP);
+    }
+    )*)? ')' '{'
+    {
+        
+        //copy of funct's values for scope
+        Identifier tempFunct = scopeStack.peek().table.get($a.getText());
+
+        //add to LL, add to scope
+
+        //start scope
         scopeStack.push(new SymbolTable());
 
+        //add funct details to scope
+        scopeStack.peek().table.put(tempFunct.id, tempFunct);
+
+        //add items to scope
+        if(function.parameters.size() > 0){
+            Identifier currId;;
+            for(int curr = 0; curr < function.parameters.size()-1; curr++){
+                currId = function.parameters.get(curr);
+                scopeStack.peek().table.put(currId.id, currId);
+            }
+        }
+        
         
     }
  stmt* KW_RTN factor SCOLN '}'
     {
+        //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
+        
         //attach funct value 
-        if(!($dataType.type.equals($factor.type))){
+        if(!($d.type.equals($factor.type))){
             //is not returning same data type
-            error($DNT, "Type incompatability between function and return value");
+            error($factor.start, "Type incompatability between function (" + $d.type + ") and return value (" + $factor.type +")");
         } else {
             if(($factor.type.equals("strng") || $factor.type.equals("chr"))){
-                //mainTable.table.get($DNT.getText()).content = $factor.content;
+                scopeStack.peek().table.get($a.getText()).content = $factor.content;
             } else {
-                //mainTable.table.get($DNT.getText()).value = $factor.value;
+                scopeStack.peek().table.get($a.getText()).value = $factor.value;
             }
             
         }
@@ -408,6 +458,9 @@ functStmt : KW_FNCTN dataType DNT '(' (dt=dataType DNT (CMM dt2=dataType DNT)*)?
         //end scope
         scopeStack.pop();
         System.out.println("scope deleted");
+
+        //clear list
+        //scopeStack.peek().table.get($a.getText()).parameters = new ArrayList<>();
     } ; 
 
 loopStmt : while | for | doWhile; 
@@ -421,27 +474,6 @@ doWhile : KW_D blockStmt KW_WHL '(' comparison ')' ;
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 
 elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
-
-argC : dt=dataType DNT 
-        {
-            //create DNT without value, doesnt matter if name repeated UNLESS in funct scope
-            // currLHS = $DNT.getText();
-            // // preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
-            // Identifier parameter = new Identifier();
-            // parameter.id = currLHS;
-            // parameter.type = 
-            // if($dt.type == null){
-            //     error($DNT, "data type is '" + $dt.type + "'");
-            // }
-
-            // //set type
-            // newId.type = $dt.type;
-
-            //add to function scope
-            
-        }
-        //| (factor DNT argC) | argC CMM argC 
-        ; 
 
 forLoopInc : DNT SSGN additiveExpr | DNT'++' | DNT'--' ;
 
@@ -702,7 +734,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content]
     ; 
 
 functCall returns [boolean hasKnownValue, String type, float value, String content]: 
-    DNT '(' (factor (CMM factor)*)? ')'
+    DNT '('
     {
         //check if DNT is in function
         String id = $DNT.getText();
@@ -724,18 +756,58 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
             // function exists
             currentId.hasBeenUsed = true;
             $hasKnownValue = currentId.hasKnown;
-
-            //sets value, should be whatever is returned into the function DNT
-            $value = currentId.value;
-            $type = currentId.type;
-            $content = currentId.content;
-
-            //check params
             
         }
 
         //check if factor matches type set in function
         //assign if so, error if not
+
+        //init check for amount params 
+        int paramCount = 0;
+    }
+    (factor 
+    {
+        //test if params
+        if((currentId !=null) && (currentId.parameters.size() > 0)){
+            Identifier inputPar = scopeStack.peek().table.get(currentId.id).parameters.get(0);
+            //check param
+            if($factor.type.equals(inputPar.type)){
+                //System.out.println("DEBUG: parameter success");
+            } else {
+                error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
+            }
+        } else {
+            error($DNT, "There are no parameters for function '" + $DNT.getText() + "'");
+        }
+
+        paramCount ++; //inc param count
+        
+    }
+    (CMM factor
+    {
+        if((currentId !=null) && (currentId.parameters.size() > paramCount)){
+            Identifier inputPar = scopeStack.peek().table.get(currentId.id).parameters.get(paramCount);
+            //check param
+            if($factor.type.equals(inputPar.type)){
+                //System.out.println("DEBUG: parameter success");
+            } else {
+                error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
+            }
+        } else {
+            error($DNT, "There are no additional parameters for function '" + $DNT.getText() + "'");
+        }
+
+        paramCount ++;
+
+    }
+    )*)? ')'
+    {
+        //sets value, should be whatever is returned into the function DNT
+        $value = currentId.value;
+        $type = currentId.type;
+        $content = currentId.content;
+        $hasKnownValue = currentId.hasKnown;
+
     }
     ; 
 
