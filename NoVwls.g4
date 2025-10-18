@@ -802,9 +802,9 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
     }
     )*)? ')'
     {
-        if(paramCount > currentId.parameters.size()){
+        if(paramCount < currentId.parameters.size()){
             error($DNT, "Function is missing parameters.");
-        } else if (paramCount < currentId.parameters.size()){
+        } else if (paramCount > currentId.parameters.size()){
             error($DNT, "Function has excessive parameters.");
         }
 

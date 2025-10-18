@@ -1,0 +1,21 @@
+//wrong inputs for function
+
+//incorrect return 
+Fnctn nt test1 (){
+    prnt("Hello World");
+    rtn "goodbye";
+}
+
+//too many parameters
+Fnctn flt test2 (nt x, flt y){
+    prnt("Test 2");
+    rtn 0.0;
+}
+
+test2(2);
+
+//not enough parameters
+test2(4,3.2,"hello");
+
+//incorrect parameters
+test2(2,"hi");
