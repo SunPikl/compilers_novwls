@@ -57,5 +57,5 @@ prnt(z);
 ll(3,2.0,"s");
 //prnt(ll());
 
-nt bobo = ll();
+nt bobo = ll(3,3.3,"brosl",2);
 prnt(bobo);

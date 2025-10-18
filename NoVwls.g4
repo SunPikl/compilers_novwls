@@ -802,6 +802,12 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
     }
     )*)? ')'
     {
+        if(paramCount > currentId.parameters.size()){
+            error($DNT, "Function is missing parameters.");
+        } else if (paramCount < currentId.parameters.size()){
+            error($DNT, "Function has excessive parameters.");
+        }
+
         //sets value, should be whatever is returned into the function DNT
         $value = currentId.value;
         $type = currentId.type;

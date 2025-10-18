@@ -2380,6 +2380,12 @@ public class NoVwlsParser extends Parser {
 			setState(316);
 			match(R_PRNTH);
 
+			        if(paramCount > currentId.parameters.size()){
+			            error(((FunctCallContext)_localctx).DNT, "Function is missing parameters.");
+			        } else if (paramCount < currentId.parameters.size()){
+			            error(((FunctCallContext)_localctx).DNT, "Function has excessive parameters.");
+			        }
+
 			        //sets value, should be whatever is returned into the function DNT
 			        ((FunctCallContext)_localctx).value =  currentId.value;
 			        ((FunctCallContext)_localctx).type =  currentId.type;
