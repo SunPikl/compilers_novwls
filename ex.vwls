@@ -54,8 +54,15 @@ prnt(nknwn);
 prnt("Using variables to do integer 3 + float 2.5");
 prnt(z);
 
-ll(3,2.0,"s");
-//prnt(ll());
 
-nt bobo = ll(3,3.3,"brosl",2);
-prnt(bobo);
+//Basic array
+nt[] arr = {1, 2, 3};
+prnt(arr);
+
+//Array access  
+nt x = arr[1];
+prnt(x);
+
+//2D array
+nt[][] matrix = {{1, 2}, {3, 4}};
+prnt(matrix);
