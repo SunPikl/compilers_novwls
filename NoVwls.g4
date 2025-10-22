@@ -23,6 +23,8 @@ grammar NoVwls;
         boolean is2DArray = false;
     }
 
+        int loopDepth = 0;  // Track nested loops for break statements
+
     //Symbol Table
     class SymbolTable {
         Map<String, Identifier> table = new HashMap<>();
@@ -128,6 +130,8 @@ assignStmt : (dt=dataType)? DNT
         newId.id = currLHS;
 
         if(!preexistingLHS){ 
+            // Attempted FIX: Check if dt is null before accessing dt.type
+            // If dt is null, it means no data type was specified, $dt == null || $dt.type == null
             if($dt.type == null){
                 error($DNT, "data type not specified for '" + currLHS + "'");
                 newId.type = "null";
@@ -137,7 +141,6 @@ assignStmt : (dt=dataType)? DNT
         } else {
             newId.type = scopeStack.peek().table.get(currLHS).type;
         }
-
         boolean errorFlag = false;
         if(!errorFlag && $rhs.hasKnownValue){
             newId.value = $rhs.value;
@@ -446,14 +449,43 @@ functStmt : KW_FNCTN d=dataType a=DNT
         //scopeStack.peek().table.get($a.getText()).parameters = new ArrayList<>();
     } ; 
 
-loopStmt : while | for | doWhile; 
-while : KW_WHL '(' comparison ')' blockStmt ;  
-for : KW_FR '(' assignStmt comparison SCOLN forLoopInc ')' blockStmt ; 
-doWhile : KW_D blockStmt KW_WHL '(' comparison ')' ; 
+// Loop statements
+loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
+
+    // While loop
+    whileLoop : KW_WHL 
+        L_PRNTH comparison R_PRNTH 
+        blockStmt
+        ;
+
+    // For loop
+    forLoop : KW_FR 
+        L_PRNTH 
+            (assignStmt | SCOLN)    // initialization (optional)
+            comparison SCOLN         // condition
+            (forLoopInc SCOLN)?      // increment (optional) - ADDED SCOLN
+        R_PRNTH 
+        blockStmt
+        ;
+
+    // Do-While loop
+    doWhileLoop : KW_D 
+        blockStmt
+        KW_WHL L_PRNTH comparison R_PRNTH SCOLN
+        ;
+
+    // Break statement
+    breakStmt : KW_BRK SCOLN;
+
+    // For loop increment options
+    forLoopInc : 
+        DNT SSGN additiveExpr     // x = x + 1
+        | DNT '++'                 // x++
+        | DNT '--'                 // x--
+        ;
+
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
-
-forLoopInc : DNT SSGN additiveExpr | DNT'++' | DNT'--' ;
 
 expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues]: 
         a=factor 
@@ -857,3 +889,4 @@ primitiveDT returns [String type]:
 arrayDT returns [String type]: 
     primitiveDT L_SQBR R_SQBR { $type = $primitiveDT.type + "[]"; }
     | primitiveDT L_SQBR R_SQBR L_SQBR R_SQBR { $type = $primitiveDT.type + "[][]"; };
+
