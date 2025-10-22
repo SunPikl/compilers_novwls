@@ -2312,9 +2312,6 @@ public class NoVwlsParser extends Parser {
 			            
 			        }
 
-			        //check if factor matches type set in function
-			        //assign if so, error if not
-
 			        //init check for amount params 
 			        int paramCount = 0;
 			    
@@ -2329,9 +2326,11 @@ public class NoVwlsParser extends Parser {
 				        //test if params
 				        if((currentId !=null) && (currentId.parameters.size() > 0)){
 				            Identifier inputPar = scopeStack.peek().table.get(currentId.id).parameters.get(0);
+				            
 				            //check param
 				            if(((FunctCallContext)_localctx).factor.type.equals(inputPar.type)){
 				                //System.out.println("DEBUG: parameter success");
+				                
 				            } else {
 				                error((((FunctCallContext)_localctx).factor!=null?(((FunctCallContext)_localctx).factor.start):null), "The input parameter input type '" + ((FunctCallContext)_localctx).factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
 				            }
