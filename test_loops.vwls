@@ -1,24 +1,32 @@
-// Simple while loop
-whl (x < 5) {
-    prnt(x);
-    x = x + 1;
-}
-
-// For loop with all components
-fr (i=0; i<10; i=i+1;) {
+// Test while loop
+nt i = 0;
+whl (i < 3) {
     prnt(i);
+    nt i = i + 1;  
 }
 
-// For loop with empty components  
-fr (;x<5;) {
-    prnt(x);
-    x = x + 1;
+// Test for loop
+fr (nt j = 0; j < 3; nt j = j + 1;) {  
+    prnt(j);
 }
 
-// Do-while loop
+// Test do-while loop  
+nt k = 0;
 d {
-    prnt("hello");
-} whl (0);
+    prnt(k);
+    nt k = k + 1;  
+} whl (k < 3);
 
-// Break anywhere
-brk;
+// Test break in loop - use proper boolean
+bl condition = 1;
+whl (condition) {
+    prnt("breaking");
+    brk;
+}
+
+// Test nested loops
+fr (nt x = 0; x < 2; nt x = x + 1;) { 
+    fr (nt y = 0; y < 2; nt y = y + 1;) {  
+        prnt(x, " ", y);
+    }
+}
