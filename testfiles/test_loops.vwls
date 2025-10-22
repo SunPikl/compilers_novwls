@@ -1,7 +1,0 @@
-prnt("Start");
-nt i = 0;
-whl (i < 2) {
-    prnt("i=", i);
-    i = i + 1;
-}
-prnt("Done");

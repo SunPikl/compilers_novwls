@@ -23,8 +23,6 @@ grammar NoVwls;
         boolean is2DArray = false;
     }
 
-        int loopDepth = 0;  // Track nested loops for break statements
-
     //Symbol Table
     class SymbolTable {
         Map<String, Identifier> table = new HashMap<>();
@@ -114,25 +112,22 @@ DNT : [a-zA-Z][a-zA-Z0-9_]* ;
 //~~~~~~~~~~~~~~~~~~~ EBNF Grammar ~~~~~~~~~~~~~~~~~~
 program : {scopeStack.push(mainTable);} (stmt)* EOF { printDiagnostics(); } ; 
 
-stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | functCall SCOLN | comment; 
+stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | breakStmt | functCall SCOLN | comment;
 
 blockStmt : '{' { scopeStack.push(new SymbolTable()); } (stmt)* '}' { scopeStack.pop(); } ;
 
-assignStmt : (dt=dataType)? DNT 
+assignStmt : (dt=dataType)? DNT    
     {
         currLHS = $DNT.getText();
         preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
     }
-    SSGN rhs SCOLN
-    {
+    SSGN rhs SCOLN   {
         assigned.add(currLHS);
         Identifier newId = new Identifier();
         newId.id = currLHS;
 
         if(!preexistingLHS){ 
-            // Attempted FIX: Check if dt is null before accessing dt.type
-            // If dt is null, it means no data type was specified, $dt == null || $dt.type == null
-            if($dt.type == null){
+            if($dt == null){  // FIXED: Check if dt is null, not dt.type
                 error($DNT, "data type not specified for '" + currLHS + "'");
                 newId.type = "null";
             } else {
@@ -141,6 +136,7 @@ assignStmt : (dt=dataType)? DNT
         } else {
             newId.type = scopeStack.peek().table.get(currLHS).type;
         }
+
         boolean errorFlag = false;
         if(!errorFlag && $rhs.hasKnownValue){
             newId.value = $rhs.value;
@@ -449,43 +445,44 @@ functStmt : KW_FNCTN d=dataType a=DNT
         //scopeStack.peek().table.get($a.getText()).parameters = new ArrayList<>();
     } ; 
 
-// Loop statements
+//~~~~~~~~~~~~~~~~~~~ Loop Statements ~~~~~~~~~~~~~~~~~~
 loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
 
-    // While loop
-    whileLoop : KW_WHL 
-        L_PRNTH comparison R_PRNTH 
-        blockStmt
-        ;
+// While loop
+whileLoop : KW_WHL 
+    L_PRNTH comparison R_PRNTH 
+    blockStmt
+    ;
 
-    // For loop
-    forLoop : KW_FR 
-        L_PRNTH 
-            (assignStmt | SCOLN)    // initialization (optional)
-            comparison SCOLN         // condition
-            (forLoopInc SCOLN)?      // increment (optional) - ADDED SCOLN
-        R_PRNTH 
-        blockStmt
-        ;
+// For loop - FIXED structure
+forLoop : KW_FR 
+    L_PRNTH 
+        (assignStmt | SCOLN)    // initialization
+        comparison SCOLN         // condition  
+        (forLoopInc SCOLN)?      // increment
+    R_PRNTH 
+    blockStmt
+    ;
 
-    // Do-While loop
-    doWhileLoop : KW_D 
-        blockStmt
-        KW_WHL L_PRNTH comparison R_PRNTH SCOLN
-        ;
+// Do-While loop  
+doWhileLoop : KW_D 
+    blockStmt
+    KW_WHL L_PRNTH comparison R_PRNTH SCOLN
+    ;
 
-    // Break statement
-    breakStmt : KW_BRK SCOLN;
+// Break statement
+breakStmt : KW_BRK SCOLN;
 
-    // For loop increment options
-    forLoopInc : 
-        DNT SSGN additiveExpr     // x = x + 1
-        | DNT '++'                 // x++
-        | DNT '--'                 // x--
-        ;
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
+
+// For loop increment options
+forLoopInc : 
+    DNT SSGN additiveExpr     // x = x + 1
+    | DNT INC                 // x++
+    | DNT DCR                 // x--
+    ;
 
 expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues]: 
         a=factor 
@@ -889,4 +886,3 @@ primitiveDT returns [String type]:
 arrayDT returns [String type]: 
     primitiveDT L_SQBR R_SQBR { $type = $primitiveDT.type + "[]"; }
     | primitiveDT L_SQBR R_SQBR L_SQBR R_SQBR { $type = $primitiveDT.type + "[][]"; };
-
