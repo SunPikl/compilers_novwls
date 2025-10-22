@@ -1,0 +1,32 @@
+// Test while loop
+nt i = 0;
+whl (i < 3) {
+    prnt(i);
+    nt i = i + 1;  
+}
+
+// Test for loop
+fr (nt j = 0; j < 3; nt j = j + 1;) {  
+    prnt(j);
+}
+
+// Test do-while loop  
+nt k = 0;
+d {
+    prnt(k);
+    nt k = k + 1;  
+} whl (k < 3);
+
+// Test break in loop - use proper boolean
+bl condition = 1;
+whl (condition) {
+    prnt("breaking");
+    brk;
+}
+
+// Test nested loops
+fr (nt x = 0; x < 2; nt x = x + 1;) { 
+    fr (nt y = 0; y < 2; nt y = y + 1;) {  
+        prnt(x, " ", y);
+    }
+}

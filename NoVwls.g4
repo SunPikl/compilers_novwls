@@ -131,7 +131,7 @@ program : {scopeStack.push(mainTable);}
         { printDiagnostics();}
         ; 
 
-stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | functCall SCOLN | comment; 
+stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | breakStmt | functCall SCOLN | comment;
 
 blockStmt : '{'
     {
@@ -143,41 +143,25 @@ blockStmt : '{'
     }
     ;
 
-assignStmt : (dt=dataType)? 
-    DNT 
+assignStmt : (dt=dataType)? DNT    
     {
         currLHS = $DNT.getText();
         //preexistingLHS = mainTable.table.containsKey(currLHS);
         preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
 
     }
-    SSGN ( expr 
-    {
-        // var assigned
+    SSGN rhs SCOLN   {
         assigned.add(currLHS);
         Identifier newId = new Identifier();
         newId.id = currLHS;
 
         //if new var
         if(!preexistingLHS){ 
-            //double check data type given AND matches
-            if($dt.type == null){
-                error($DNT, "data type is '" + $dt.type + "'");
-            }
-
-            //set type
-            newId.type = $dt.type; 
-        }
-
-        boolean error = false;
-        if(preexistingLHS){
-            // System.out.println("DEBUG: current type is " + $expr.type);
-            // System.out.println("The current DNT's type is " + mainTable.table.get(currLHS).type);
-
-            //type check 
-            if(!($expr.type.equals(mainTable.table.get(currLHS).type))){
-                error($DNT, "type mismatch for " + currLHS + "'");
-                error = true;
+            if($dt == null){  // FIXED: Check if dt is null, not dt.type
+                error($DNT, "data type not specified for '" + currLHS + "'");
+                newId.type = "null";
+            } else {
+                newId.type = $dt.type; 
             }
         } else {
                 //System.out.println($dt.type + " and " + $expr.type);
@@ -209,167 +193,183 @@ assignStmt : (dt=dataType)?
         // Clear LHS 
         currLHS = null;
         }
-    | KW_SCN_NTGR 
-    {
-
-        //input
-        try{
-            int input = scan.nextInt();
-            if (scan.hasNextLine()) { //if scan.nextInt causes issues
-                scan.nextLine();  
-            }  
-            
-             // Successful RHS parse: consider variable now assigned.
-            assigned.add(currLHS);
-            Identifier newId = new Identifier();
-            newId.id = currLHS;
-            newId.value = input;
-            newId.type = "nt";
-            newId.hasKnown = true;
-            newId.hasBeenUsed = false;
-            scopeStack.peek().table.put(newId.id, newId);
-
-            //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
-            // Clear LHS context.
-            currLHS = null;
-
-        } catch(Exception e){
-            System.err.println("Input was not an integer.");
-
+    | KW_SCN_NTGR
+        {
+            try{
+                int input = scan.nextInt();
+                $hasKnownValue = true;
+                $value = input;
+                $type = "nt";
+                $isArray = false;
+                $is2DArray = false;
+            } catch(Exception e){
+                error(null, "input was not an integer");
+                $hasKnownValue = false;
+            }
         }
-        
+    | KW_SCN_FLT
+        {
+            try{
+                float input = scan.nextFloat();
+                $hasKnownValue = true;
+                $value = input;
+                $type = "flt";
+                $isArray = false;
+                $is2DArray = false;
+            } catch(Exception e){
+                error(null, "input was not a float");
+                $hasKnownValue = false;
+            }
+        }
+    | KW_SCN_STRNG
+        {
+            String input = scan.nextLine();
+            $hasKnownValue = true;
+            $content = "\"" + input + "\"";
+            $type = "strng";
+            $isArray = false;
+            $is2DArray = false;
+        }
+    | KW_SCN_CHR
+        {
+            String input = scan.next();
+            input = String.valueOf(input.charAt(0));
+            $hasKnownValue = true;
+            $content = "\'" + input + "\'";
+            $type = "chr";
+            $isArray = false;
+            $is2DArray = false;
+        };
 
-        
+arrayLiteral returns [boolean hasKnownValue, String type, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues]:
+    L_CRLYB first=arrayElement 
+    { 
+        $hasKnownValue = true;
+        $type = $first.elementType + "[]";
+        $isArray = true;
+        $is2DArray = false;
+        $arrayValues = new ArrayList<>();
+        $arrayValues.add($first.elementValue);
     }
-    | KW_SCN_STRNG 
+    (CMM next=arrayElement 
     {
-        //input
-        String input = scan.nextLine();
-
-        // Successful RHS parse: consider variable now assigned.
-        assigned.add(currLHS);
-        Identifier newId = new Identifier();
-        newId.id = currLHS;
-        newId.content = "\"" + input + "\""; //put in string format
-        newId.type = "strng";
-        newId.hasKnown = true;
-        newId.hasBeenUsed = false;
-        scopeStack.peek().table.put(newId.id, newId);
-
-        //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
-        // Clear LHS context.
-        currLHS = null;
+        if ($next.hasKnownValue) {
+            $arrayValues.add($next.elementValue);
+        }
+    })* R_CRLYB
+    | L_CRLYB firstRow=arrayLiteral 
+    { 
+        $hasKnownValue = true;
+        $type = $firstRow.type;
+        $isArray = false;
+        $is2DArray = true;
+        $array2DValues = new ArrayList<>();
+        $array2DValues.add(new ArrayList<>($firstRow.arrayValues));
     }
-    | KW_SCN_FLT 
+    (CMM nextRow=arrayLiteral 
     {
-        //input
-        float input = scan.nextFloat();
+        $array2DValues.add(new ArrayList<>($nextRow.arrayValues));
+    })* R_CRLYB;
 
-        // Successful RHS parse: consider variable now assigned.
-        assigned.add(currLHS);
-        Identifier newId = new Identifier();
-        newId.id = currLHS;
-        newId.value = input;
-        newId.type = "flt";
-        newId.hasKnown = true;
-        newId.hasBeenUsed = false;
-        scopeStack.peek().table.put(newId.id, newId);
-
-        //System.out.println(newId.id + " is " + newId.type + " with value " + newId.value);
-        // Clear LHS context.
-        currLHS = null;
-    }
-    | KW_SCN_CHR 
+arrayElement returns [boolean hasKnownValue, Object elementValue, String elementType]:
+    expr
     {
-        //input 
-        String input = scan.next();
-        input = String.valueOf(input.charAt(0));
-        //System.out.println("input " + input);
+        $hasKnownValue = $expr.hasKnownValue;
+        $elementType = $expr.type;
+        if ($expr.type.equals("nt")) {
+            $elementValue = (int)$expr.value;
+        } else if ($expr.type.equals("flt")) {
+            $elementValue = $expr.value;
+        } else if ($expr.type.equals("bl")) {
+            $elementValue = $expr.value == 1.0f;
+        } else if ($expr.type.equals("strng") || $expr.type.equals("chr")) {
+            $elementValue = $expr.content;
+        } else {
+            $elementValue = $expr.value;
+        }
+    };
 
-        // Successful RHS parse: consider variable now assigned.
-        assigned.add(currLHS);
-        Identifier newId = new Identifier();
-        newId.id = currLHS;
-        newId.content = "\'" + input + "\'"; //put in string format
-        newId.type = "chr";
-        newId.hasKnown = true;
-        newId.hasBeenUsed = false;
-        scopeStack.peek().table.put(newId.id, newId);
+printStmt : KW_PRNT '(' first=printExpr (CMM more=printExpr)* ')' SCOLN { System.out.print("\n"); } ;
 
-        //System.out.println("DEBUG: " + newId.id + " is " + newId.type + " with value " + newId.content);
-        // Clear LHS context.
-        currLHS = null;
-    }
-    ) SCOLN; 
-
-printStmt : KW_PRNT '(' print=expr 
-            { 
-            if($print.type == null){
-                System.err.println("Error: cannot print null types");
-            }else if(($print.type.equals("strng") || $print.type.equals("chr")) && $print.content != null){
-                String printStr = $print.content;
-                //printStr = printStr.substring(1);
-                printStr = printStr.substring(1, printStr.length() - 1);
-               System.out.print(printStr);
-            } else {
-
-                //System.out.println("DEBUG: the type is " + $print.type);
-
-                if($print.type.equals("flt")){ //if float, just give value (already in float form)
-                    System.out.print($print.value);
-                } else {  //if bool or 
-                    int printval = (int)(Math.abs($print.value));
-                    System.out.print(printval);
+printExpr : expr 
+    { 
+        if($expr.type == null){
+            System.err.println("Error: cannot print null types");
+        } else if(($expr.type.equals("strng") || $expr.type.equals("chr")) && $expr.content != null){
+            String printStr = $expr.content;
+            printStr = printStr.substring(1, printStr.length() - 1);
+            System.out.print(printStr);
+        } else if ($expr.isArray) {
+            System.out.print("[");
+            if ($expr.arrayValues != null) {
+                for (int i = 0; i < $expr.arrayValues.size(); i++) {
+                    if (i > 0) System.out.print(", ");
+                    Object element = $expr.arrayValues.get(i);
+                    if (element instanceof Integer) {
+                        System.out.print((Integer)element);
+                    } else if (element instanceof Float) {
+                        System.out.print((Float)element);
+                    } else if (element instanceof Boolean) {
+                        System.out.print((Boolean)element ? "true" : "false");
+                    } else if (element instanceof String) {
+                        String str = (String)element;
+                        if (str.startsWith("\"") && str.endsWith("\"")) {
+                            System.out.print(str.substring(1, str.length() - 1));
+                        } else if (str.startsWith("'") && str.endsWith("'")) {
+                            System.out.print(str.substring(1, str.length() - 1));
+                        } else {
+                            System.out.print(str);
+                        }
+                    } else {
+                        System.out.print(element);
+                    }
                 }
-                
             }
-
-            }
-            (more=varC
-            { 
-            if($print.type == null){
-                System.err.println("Error: cannot print null types");
-            }else if(($more.type.equals("strng") || $more.type.equals("chr")) && $more.content != null){
-                String printStr = $more.content;
-                //System.out.println("precut " + printStr);
-                //printStr = printStr.substring(1);
-                printStr = printStr.substring(1, printStr.length() - 1);
-               System.out.print(printStr);
-            } else {
-
-                //System.out.println("DEBUG: the type is " + $more.type);
-
-                if($more.type.equals("flt")){ //if float, just give value (already in float form)
-                    System.out.print($more.value);
-                } else {  //if bool or 
-                    int printval = (int)(Math.abs($more.value));
-                    System.out.print(printval);
+            System.out.print("]");
+        } else if ($expr.is2DArray) {
+            System.out.print("[");
+            if ($expr.array2DValues != null) {
+                for (int i = 0; i < $expr.array2DValues.size(); i++) {
+                    if (i > 0) System.out.print(", ");
+                    System.out.print("[");
+                    List<Object> row = $expr.array2DValues.get(i);
+                    for (int j = 0; j < row.size(); j++) {
+                        if (j > 0) System.out.print(", ");
+                        Object element = row.get(j);
+                        if (element instanceof Integer) {
+                            System.out.print((Integer)element);
+                        } else if (element instanceof Float) {
+                            System.out.print((Float)element);
+                        } else if (element instanceof Boolean) {
+                            System.out.print((Boolean)element ? "true" : "false");
+                        } else if (element instanceof String) {
+                            String str = (String)element;
+                            if (str.startsWith("\"") && str.endsWith("\"")) {
+                                System.out.print(str.substring(1, str.length() - 1));
+                            } else if (str.startsWith("'") && str.endsWith("'")) {
+                                System.out.print(str.substring(1, str.length() - 1));
+                            } else {
+                                System.out.print(str);
+                            }
+                        } else {
+                            System.out.print(element);
+                        }
+                    }
+                    System.out.print("]");
                 }
-                
             }
-
+            System.out.print("]");
+        } else {
+            if($expr.type.equals("flt")){
+                System.out.print($expr.value);
+            } else if($expr.type.equals("bl")){
+                System.out.print($expr.value == 1.0f ? "true" : "false");
+            } else {
+                int printval = (int)(Math.abs($expr.value));
+                System.out.print(printval);
             }
-            )* 
-            {
-                System.out.print("\n");
-            }
-            ')' SCOLN
-            
-            ; 
-
-varC returns [boolean hasKnownValue, String type, float value, String content]: 
-            CMM expr 
-            {
-                if ($expr.hasKnownValue) {
-                    $hasKnownValue = true;
-                    $value = $expr.value;
-                    $content = $expr.content;
-                    $type = $expr.type;
-                } else {
-                    $hasKnownValue = false;
-                } 
-            }
-            ; 
+        }
+    };
 
 compareStmt : KW_F '(' a=comparison ')' blockStmt elseC? ; 
 
@@ -463,19 +463,45 @@ functStmt : KW_FNCTN d=dataType a=DNT
         //scopeStack.peek().table.get($a.getText()).parameters = new ArrayList<>();
     } ; 
 
-loopStmt : while | for | doWhile; 
+//~~~~~~~~~~~~~~~~~~~ Loop Statements ~~~~~~~~~~~~~~~~~~
+loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
 
-while : KW_WHL '(' comparison ')' blockStmt ;  
+// While loop
+whileLoop : KW_WHL 
+    L_PRNTH comparison R_PRNTH 
+    blockStmt
+    ;
 
-for : KW_FR '(' assignStmt comparison SCOLN forLoopInc ')' blockStmt ; 
+// For loop - FIXED structure
+forLoop : KW_FR 
+    L_PRNTH 
+        (assignStmt | SCOLN)    // initialization
+        comparison SCOLN         // condition  
+        (forLoopInc SCOLN)?      // increment
+    R_PRNTH 
+    blockStmt
+    ;
 
-doWhile : KW_D blockStmt KW_WHL '(' comparison ')' ; 
+// Do-While loop  
+doWhileLoop : KW_D 
+    blockStmt
+    KW_WHL L_PRNTH comparison R_PRNTH SCOLN
+    ;
+
+// Break statement
+breakStmt : KW_BRK SCOLN;
+
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 
 elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
 
-forLoopInc : DNT SSGN additiveExpr | DNT'++' | DNT'--' ;
+// For loop increment options
+forLoopInc : 
+    DNT SSGN additiveExpr     // x = x + 1
+    | DNT INC                 // x++
+    | DNT DCR                 // x--
+    ;
 
 expr returns [boolean hasKnownValue, String type, float value, String content]: 
         a=factor 
@@ -640,12 +666,9 @@ unaryExpr returns [boolean hasKnownValue, String type, float value]:
             $value = $a.value;
             $type = $a.type;
         } else $hasKnownValue = false;
-    }
-    ;
+    };
 
-comparer : LSSTHN | GRTRTHN | LSSTHNREQL | GRTRTHNREQL | EQL | NTEQL; 
-
-factor returns [boolean hasKnownValue, String type, float value, String content]: 
+factor returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues]: 
       NT 
         {   $hasKnownValue = true; 
 
