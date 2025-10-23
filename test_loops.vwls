@@ -6,7 +6,7 @@ whl (i < 3) {
 }
 
 // Test for loop
-fr (nt j = 0; j < 3; nt j = j + 1;) {  
+fr (nt j = 0; j < 3; j = j + 1;) {  
     prnt(j);
 }
 
@@ -18,15 +18,15 @@ d {
 } whl (k < 3);
 
 // Test break in loop - use proper boolean
-bl condition = 1;
+bl condition = true;
 whl (condition) {
     prnt("breaking");
     brk;
 }
 
 // Test nested loops
-fr (nt x = 0; x < 2; nt x = x + 1;) { 
-    fr (nt y = 0; y < 2; nt y = y + 1;) {  
+fr (nt x = 0; x < 2; x = x + 1;) { 
+    fr (nt y = 0; y < 2; y = y + 1;) { 
         prnt(x, " ", y);
     }
 }
