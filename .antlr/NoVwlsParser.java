@@ -1,5 +1,5 @@
 // Generated from c:/Users/Morgan/Downloads/fall_25/Compilers/compilers_novwls/NoVwls.g4 by ANTLR 4.13.1
- import java.util.*; 
+ import java.util.*; import java.io.*;
 import org.antlr.v4.runtime.atn.*;
 import org.antlr.v4.runtime.dfa.DFA;
 import org.antlr.v4.runtime.*;
@@ -148,18 +148,55 @@ public class NoVwlsParser extends Parser {
 	    boolean preexistingLHS = false;
 	    Scanner scan = new Scanner(System.in);
 
+	    //errors
 	    void error(Token t, String msg) {
 	        diagnostics.add("line " + t.getLine() + ":" + t.getCharPositionInLine() + " " + msg);
 	    }
 
-	    void printDiagnostics() {
+	    int printDiagnostics() {
+	        int numErrors = 0;
 	        for (String v : assigned) {
 	            if (!used.contains(v)) {
 	                System.err.println("warning: variable '" + v + "' assigned but never used");
 	            }
 	        }
 	        for (String d : diagnostics) {
+	            numErrors++;
 	            System.err.println("error: " + d);
+	        }
+
+	        return numErrors;
+	    }
+
+	    //code gen
+	    StringBuilder sb = new StringBuilder(); // Stores the generated program
+	    void emit(String s) { sb.append(s); }   // Short-hand for adding to the program
+
+	    // Emit the preamble material for our program
+	    void openProgram() {
+	        emit("import java.util.*;\n");
+	        emit("public class NoVwlsProgram {\n");
+	        emit("  public static void main(String[] args) throws Exception {\n");
+	        emit("    Scanner in = new Scanner(System.in);\n");
+	    }
+
+	    // Emit the postamble material for our program
+	    void closeProgram() {
+	        emit("  }\n");
+	        emit("}\n");
+	    }
+
+	    // Declare LHS if first-time assignment; otherwise plain assignment.
+	    void generateAssign(boolean declare, String name, String rhsJavaCode) {
+	        emit("    " + (declare ? "double " : " ") + name + " = " + rhsJavaCode + ";\n");
+	    }
+
+	    // Write the generated Java to file.
+	    void writeFile() {
+	        try (PrintWriter pw = new PrintWriter("NoVwlsProgram.java", "UTF-8")) {
+	            pw.print(sb.toString());
+	        } catch (Exception e) {
+	            System.err.println("error: failed to write NoVwlsProgram.java: " + e.getMessage());
 	        }
 	    }
 
@@ -190,7 +227,10 @@ public class NoVwlsParser extends Parser {
 		try {
 			enterOuterAlt(_localctx, 1);
 			{
-			scopeStack.push(mainTable);
+
+			        scopeStack.push(mainTable);
+			        openProgram();
+			    
 			setState(66);
 			_errHandler.sync(this);
 			_la = _input.LA(1);
@@ -207,7 +247,18 @@ public class NoVwlsParser extends Parser {
 			}
 			setState(69);
 			match(EOF);
-			 printDiagnostics(); 
+			 
+			        printDiagnostics(); 
+			        int numErrors = printDiagnostics();
+			        if (numErrors == 0) {
+			            // Successful, so write out the generated code
+			            closeProgram();
+			            writeFile();
+			        } else {
+			            System.err.println(numErrors + " errors detected. Code not generated.");
+			            System.exit(1);  // Error code
+			        }
+			    
 			}
 		}
 		catch (RecognitionException re) {
