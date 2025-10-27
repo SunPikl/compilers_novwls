@@ -1,0 +1,15 @@
+// try to access out of bounds array index
+
+//Basic array
+nt[] arr = {1, 2, 3};
+prnt(arr);
+
+//Array access  
+nt x = arr[1]; //issue line
+prnt(x);
+
+nt y = arr[3]; //error line
+
+//2D array
+nt[][] matrix = {{1, 2}, {3, 4}};
+prnt(matrix);

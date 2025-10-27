@@ -473,12 +473,16 @@ public class NoVwlsParser extends Parser {
 			                errorFlag = true;
 			            }
 			        } else {
-			                //System.out.println(((AssignStmtContext)_localctx).dt.type + " and " + ((AssignStmtContext)_localctx).rhs.type);
-			            if(!(((AssignStmtContext)_localctx).rhs.type.equals(((AssignStmtContext)_localctx).dt.type))){
-			                //System.out.println("DEBUG issue with type match for " + currLHS + " where " + ((AssignStmtContext)_localctx).dt.type + " not " + ((AssignStmtContext)_localctx).rhs.type);
-			                error(((AssignStmtContext)_localctx).DNT, "type mismatch for " + currLHS );
-			                errorFlag = true;
-			            } 
+			            //System.out.println(((AssignStmtContext)_localctx).dt.type + " and " + ((AssignStmtContext)_localctx).rhs.type);
+			            try {
+			                if(!(((AssignStmtContext)_localctx).rhs.type.equals(((AssignStmtContext)_localctx).dt.type))){
+			                    //System.out.println("DEBUG issue with type match for " + currLHS + " where " + ((AssignStmtContext)_localctx).dt.type + " not " + ((AssignStmtContext)_localctx).rhs.type);
+			                    error(((AssignStmtContext)_localctx).DNT, "type mismatch for " + currLHS );
+			                    errorFlag = true;
+			                } 
+			            } catch (Exception e){
+			                error(((AssignStmtContext)_localctx).DNT," cannot access a nonexistant value");
+			            }
 			        }
 			        if(!errorFlag && ((AssignStmtContext)_localctx).rhs.hasKnownValue){
 			            newId.value = ((AssignStmtContext)_localctx).rhs.value;
@@ -2535,6 +2539,7 @@ public class NoVwlsParser extends Parser {
 		public String content;
 		public Token DNT;
 		public ExprContext index;
+		public ExprContext expr;
 		public TerminalNode DNT() { return getToken(NoVwlsParser.DNT, 0); }
 		public TerminalNode L_SQBR() { return getToken(NoVwlsParser.L_SQBR, 0); }
 		public TerminalNode R_SQBR() { return getToken(NoVwlsParser.R_SQBR, 0); }
@@ -2558,7 +2563,7 @@ public class NoVwlsParser extends Parser {
 			setState(350);
 			match(L_SQBR);
 			setState(351);
-			((ArrayAccessContext)_localctx).index = expr();
+			((ArrayAccessContext)_localctx).index = ((ArrayAccessContext)_localctx).expr = expr();
 			setState(352);
 			match(R_SQBR);
 
@@ -2601,9 +2606,11 @@ public class NoVwlsParser extends Parser {
 			                } else {
 			                    ((ArrayAccessContext)_localctx).hasKnownValue =  false;
 			                }
+			                
 			            } else {
-			                error(((ArrayAccessContext)_localctx).DNT, "array index out of bounds");
+			                error(((ArrayAccessContext)_localctx).DNT, "Array index '" + ((ArrayAccessContext)_localctx).expr.value + "' is out of bounds.");
 			                ((ArrayAccessContext)_localctx).hasKnownValue =  false;
+			                ((ArrayAccessContext)_localctx).type =  "null";
 			            }
 			        } else {
 			            ((ArrayAccessContext)_localctx).hasKnownValue =  false;
@@ -2697,6 +2704,19 @@ public class NoVwlsParser extends Parser {
 				            //check param
 				            if(((FunctCallContext)_localctx).factor.type.equals(inputPar.type)){
 				                //System.out.println("DEBUG: parameter success");
+				                scopeStack.peek().table.get(currentId.id).parameters.get(0).value = ((FunctCallContext)_localctx).factor.value;
+				                scopeStack.peek().table.get(currentId.id).parameters.get(0).content = ((FunctCallContext)_localctx).factor.content;
+				                scopeStack.peek().table.get(currentId.id).parameters.get(0).type = ((FunctCallContext)_localctx).factor.type;
+				                scopeStack.peek().table.get(currentId.id).parameters.get(0).hasKnown = ((FunctCallContext)_localctx).factor.hasKnownValue;
+				                scopeStack.peek().table.get(currentId.id).parameters.get(0).isFunction = false;
+				                scopeStack.peek().table.get(currentId.id).parameters.get(0).isArray = ((FunctCallContext)_localctx).factor.isArray;
+				                scopeStack.peek().table.get(currentId.id).parameters.get(0).is2DArray = ((FunctCallContext)_localctx).factor.is2DArray;
+
+				                if(((FunctCallContext)_localctx).factor.isArray){
+				                    scopeStack.peek().table.get(currentId.id).parameters.get(0).arrayValues = ((FunctCallContext)_localctx).factor.arrayValues;
+				                } else if (((FunctCallContext)_localctx).factor.is2DArray){
+				                    scopeStack.peek().table.get(currentId.id).parameters.get(0).array2DValues = ((FunctCallContext)_localctx).factor.array2DValues;
+				                }
 				            } else {
 				                error((((FunctCallContext)_localctx).factor!=null?(((FunctCallContext)_localctx).factor.start):null), "The input parameter input type '" + ((FunctCallContext)_localctx).factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
 				            }
@@ -2723,6 +2743,19 @@ public class NoVwlsParser extends Parser {
 					            //check param
 					            if(((FunctCallContext)_localctx).factor.type.equals(inputPar.type)){
 					                //System.out.println("DEBUG: parameter success");
+					                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).value = ((FunctCallContext)_localctx).factor.value;
+					                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).content = ((FunctCallContext)_localctx).factor.content;
+					                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).type = ((FunctCallContext)_localctx).factor.type;
+					                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).hasKnown = ((FunctCallContext)_localctx).factor.hasKnownValue;
+					                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).isFunction = false;
+					                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).isArray = ((FunctCallContext)_localctx).factor.isArray;
+					                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).is2DArray = ((FunctCallContext)_localctx).factor.is2DArray;
+
+					                if(((FunctCallContext)_localctx).factor.isArray){
+					                    scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).arrayValues = ((FunctCallContext)_localctx).factor.arrayValues;
+					                } else if (((FunctCallContext)_localctx).factor.is2DArray){
+					                    scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).array2DValues = ((FunctCallContext)_localctx).factor.array2DValues;
+					                }
 					            } else {
 					                error((((FunctCallContext)_localctx).factor!=null?(((FunctCallContext)_localctx).factor.start):null), "The input parameter input type '" + ((FunctCallContext)_localctx).factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
 					            }
