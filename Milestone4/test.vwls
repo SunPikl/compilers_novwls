@@ -1,0 +1,20 @@
+//milestone 4 test 1
+//arithmetic and print
+nt x = 3;
+flt y = 4.5;
+strng z = "Hello";
+
+prnt(z," World");
+prnt(x+y);
+
+//nt w = "b"; //bad test
+
+//false, skip
+f(x>y){
+    prnt(x," is greater than ",y);
+}
+
+//true, print
+f(x<y){
+    prnt(y," is greater than ",x);
+}

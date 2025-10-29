@@ -175,8 +175,20 @@ public class NoVwlsLexer extends Lexer {
 	    }
 
 	    // Declare LHS if first-time assignment; otherwise plain assignment.
-	    void generateAssign(boolean declare, String name, String rhsJavaCode) {
-	        emit("    " + (declare ? "double " : " ") + name + " = " + rhsJavaCode + ";\n");
+	    void generateAssign(boolean declare, String name, String rhsJavaCode, String type) {
+	        if(type.equals("strng")){
+	            type = "String ";
+	        } else if (type.equals("nt")){
+	            type = "double ";
+	        } else if (type.equals("flt")){
+	            type = "double ";
+	        } else if (type.equals("bl")){
+	            type = "boolean ";
+	        } else if (type.equals("chr")){
+	            type = "char ";
+	        }
+
+	        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n");
 	    }
 
 	    // Write the generated Java to file.
