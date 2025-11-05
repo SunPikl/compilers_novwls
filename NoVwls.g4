@@ -81,7 +81,7 @@ grammar NoVwls;
         if(type.equals("strng")){
             type = "String ";
         } else if (type.equals("nt")){
-            type = "double ";
+            type = "int ";
         } else if (type.equals("flt")){
             type = "double ";
         } else if (type.equals("bl")){
@@ -216,7 +216,7 @@ assignStmt : (dt=dataType)? DNT
                 errorFlag = true;
             }
         } else {
-            //System.out.println($dt.type + " and " + $rhs.type);
+            System.out.println($dt.type + " and " + $rhs.type);
             try {
                 if(!($rhs.type.equals($dt.type))){
                     //System.out.println("DEBUG issue with type match for " + currLHS + " where " + $dt.type + " not " + $rhs.type);
@@ -225,6 +225,7 @@ assignStmt : (dt=dataType)? DNT
                 } 
             } catch (Exception e){
                 error($DNT," cannot access a nonexistant value");
+                errorFlag = true;
             }
         }
         if(!errorFlag && $rhs.hasKnownValue){
@@ -236,7 +237,12 @@ assignStmt : (dt=dataType)? DNT
             newId.arrayValues = $rhs.arrayValues;
             newId.array2DValues = $rhs.array2DValues;
 
-            if (preexistingLHS) {
+    
+        } else {
+            newId.hasKnown = false;
+        }
+        
+        if (preexistingLHS) {
                 // Just a new assignment to an existing variable
                 generateAssign(false, currLHS, $rhs.code, $rhs.type);
             } else {
@@ -245,10 +251,7 @@ assignStmt : (dt=dataType)? DNT
                 mainTable.table.put(newId.id, newId);
                 generateAssign(true, newId.id, $rhs.code, $rhs.type);
             }
-        } else {
-            newId.hasKnown = false;
-        }
-        
+
         newId.hasBeenUsed = false;
         scopeStack.peek().table.put(newId.id, newId);
         currLHS = null;
@@ -280,9 +283,9 @@ rhs returns [boolean hasKnownValue, String type, float value, String content, bo
         {
             try{
                 $code = "in.nextInt()";
-                int input = scan.nextInt();
-                $hasKnownValue = true;
-                $value = input;
+                //int input = scan.nextInt();
+                $hasKnownValue = false;
+                //$value = input;
                 $type = "nt";
                 $isArray = false;
                 $is2DArray = false;
@@ -295,7 +298,7 @@ rhs returns [boolean hasKnownValue, String type, float value, String content, bo
         {
             try{
                 $code = "in.nextFloat()";
-                float input = scan.nextFloat();
+                float input = 0.0f;
                 $hasKnownValue = true;
                 $value = input;
                 $type = "flt";
@@ -476,11 +479,12 @@ printExpr returns[String code]: expr
 
 compareStmt : KW_F '(' comparison ')'
     {
-        if($comparison.value > 0){ //if true
-            emit("if (true) {\n");
-        } else { //if false
-            emit("if (false) {\n");
-        }
+        // if($comparison.value > 0){ //if true
+        //     emit("if (true) {\n");
+        // } else { //if false
+        //     emit("if (false) {\n");
+        // }
+         emit("if (" + $comparison.code + ") {\n");
         
     }
      blockStmt 
@@ -584,7 +588,13 @@ loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
 // While loop
 whileLoop : KW_WHL 
     L_PRNTH comparison R_PRNTH 
+    {
+        emit("if (" + $comparison.code + ") {\n");
+    }
     blockStmt
+    {
+        emit("}\n");
+    }
     ;
 
 // For loop - FIXED structure
@@ -620,35 +630,28 @@ forLoopInc :
 expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
         a=factor 
         {
-            if ($a.hasKnownValue) {
-                $hasKnownValue = true;
-                $value = $a.value;
-                $content = $a.content;
-                $type = $a.type;
-                $isArray = $a.isArray;
-                $is2DArray = $a.is2DArray;
-                $arrayValues = $a.arrayValues;
-                $array2DValues = $a.array2DValues;
-                $code = $a.code;
-            } else {
-                $hasKnownValue = false;
-            } 
+            $hasKnownValue = $a.hasKnownValue;
+            $value = $a.value;
+            $content = $a.content;
+            $type = $a.type;
+            $isArray = $a.isArray;
+            $is2DArray = $a.is2DArray;
+            $arrayValues = $a.arrayValues;
+            $array2DValues = $a.array2DValues;
+            $code = $a.code;
+            
         }
     | b=comparisonExpr
         {
-            if ($b.hasKnownValue) {
-                $hasKnownValue = true;
-                $value = $b.value;
-                $type = $b.type;
-                $isArray = false;
-                $is2DArray = false;
-                $code = $b.code;
-            } else {
-                $hasKnownValue = false;
-            } 
+            $hasKnownValue = $b.hasKnownValue;
+            $value = $b.value;
+            $type = $b.type;
+            $isArray = false;
+            $is2DArray = false;
+            $code = $b.code;
         };
 
-comparison returns [boolean hasKnownValue, float value] : 
+comparison returns [boolean hasKnownValue, float value, String code] : 
     a=comparisonExpr
     {
         if(!($a.type.equals("bl"))){
@@ -656,18 +659,17 @@ comparison returns [boolean hasKnownValue, float value] :
         } else {
             $hasKnownValue = true;
             $value = $a.value;
+            $code = $a.code;
         }
     };
 
 comparisonExpr returns [boolean hasKnownValue, String type, float value, String code] : 
     a=additiveExpr   
     {  
-        if ($a.hasKnownValue) {  
-            $hasKnownValue = true; 
-            $value = $a.value; 
-            $type = $a.type;
-            $code = $a.code;
-        } else $hasKnownValue = false;  
+        $hasKnownValue = $a.hasKnownValue;
+        $value = $a.value;
+        $type = $a.type;
+        $code = $a.code; 
     }  
     (op = (LSSTHN | GRTRTHN | LSSTHNREQL | GRTRTHNREQL | EQL | NTEQL) 
     b=additiveExpr  
@@ -688,9 +690,14 @@ comparisonExpr returns [boolean hasKnownValue, String type, float value, String 
                 $value = 1;  
             } else $value = 0;  
             $type = "bl";
-            $code = "" + $value;
+            $code = "(" + $code + $op.getText() + $b.code + ")"; 
         } else {
             $hasKnownValue = false;
+            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+                $type = "flt";
+            } else {
+                $type = "nt";
+            }
             $code = "(" + $code + $op.getText() + $b.code + ")";  
         }
     })*;
@@ -698,12 +705,10 @@ comparisonExpr returns [boolean hasKnownValue, String type, float value, String 
 additiveExpr returns [boolean hasKnownValue, String type, float value, String code] : 
     a=multiplicativeExpr 
     {
-        if ($a.hasKnownValue) {
-            $hasKnownValue = true;
-            $value = $a.value;
-            $type = $a.type;
-            $code = $a.code;
-        } else $hasKnownValue = false;
+        $hasKnownValue = $a.hasKnownValue;
+        $value = $a.value;
+        $type = $a.type;
+        $code = $a.code;
     }
     (op=(PLS | MNS) b=multiplicativeExpr
     {
@@ -715,12 +720,18 @@ additiveExpr returns [boolean hasKnownValue, String type, float value, String co
             }
             if ($a.type.equals("flt") || $b.type.equals("flt")) {
                 $type = "flt";
+                $code = "" + $value;
+            } else {
+                $type = "nt";
+                $code = "" + (int)$value;
+            }
+        } else {
+            $hasKnownValue = false;
+            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+                $type = "flt";
             } else {
                 $type = "nt";
             }
-            $code = "" + $value;
-        } else {
-            $hasKnownValue = false;
             $code = "(" + $code + $op.getText() + $b.code + ")";  
         }
     })*;
@@ -728,12 +739,10 @@ additiveExpr returns [boolean hasKnownValue, String type, float value, String co
 multiplicativeExpr returns [boolean hasKnownValue, String type, float value, String code]: 
     a=unaryExpr 
     {
-        if ($a.hasKnownValue) {
-            $hasKnownValue = true;
-            $value = $a.value;
-            $type = $a.type;
-            $code = $a.code;
-        } else $hasKnownValue = false;
+        $hasKnownValue = $a.hasKnownValue;
+        $value = $a.value;
+        $type = $a.type;
+        $code = $a.code;
     }
     ( op=( TMS | DVD | MOD) b=unaryExpr 
     {
@@ -751,12 +760,18 @@ multiplicativeExpr returns [boolean hasKnownValue, String type, float value, Str
             }
             if ($a.type.equals("flt") || $b.type.equals("flt")) {
                 $type = "flt";
+                $code = "" + $value;
+            } else {
+                $type = "nt";
+                $code = "" + (int)$value;
+            }
+        } else {
+            $hasKnownValue = false;
+            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+                $type = "flt";
             } else {
                 $type = "nt";
             }
-            $code = "" + $value;
-        } else {
-            $hasKnownValue = false;
             $code = "(" + $code + $op.getText() + $b.code + ")"; 
         }
     })*; 
@@ -764,15 +779,10 @@ multiplicativeExpr returns [boolean hasKnownValue, String type, float value, Str
 unaryExpr returns [boolean hasKnownValue, String type, float value, String code]: 
     ('+' | '-' | '!')? a=factor 
     {
-        if ($a.hasKnownValue) {
-            $hasKnownValue = true;
-            $value = $a.value;
-            $type = $a.type;
-            $code = "" + $value;
-        } else {
-            $hasKnownValue = false;
-            //$code = "Error";
-        }
+        $hasKnownValue = $a.hasKnownValue;
+        $value = $a.value;
+        $type = $a.type;
+        $code = $a.code;
     };
 
 factor returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
@@ -782,7 +792,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
             $type = "nt";
             $isArray = false;
             $is2DArray = false;
-            $code = ""+$value;
+            $code = ""+(int)$value;
         }
     | FLT 
         {   $hasKnownValue = true; 
@@ -805,7 +815,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
             } else {
                 $value = Integer.parseInt($BL.getText());
             }
-            $code = ""+$value;
+            $code = ""+(int)$value;
         }
     | CHR
         {   $hasKnownValue = true; 

@@ -179,7 +179,7 @@ public class NoVwlsLexer extends Lexer {
 	        if(type.equals("strng")){
 	            type = "String ";
 	        } else if (type.equals("nt")){
-	            type = "double ";
+	            type = "int ";
 	        } else if (type.equals("flt")){
 	            type = "double ";
 	        } else if (type.equals("bl")){
