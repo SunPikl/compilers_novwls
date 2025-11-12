@@ -114,6 +114,7 @@ public class NoVwlsLexer extends Lexer {
 	        //function
 	        boolean isFunction = false; //if DNT is a function
 	        List<Identifier> parameters = new ArrayList<>();
+	        StringBuilder storeFunct = new StringBuilder();
 	        
 	        List<Object> arrayValues = new ArrayList<>();
 	        List<List<Object>> array2DValues = new ArrayList<>();
@@ -158,20 +159,79 @@ public class NoVwlsLexer extends Lexer {
 
 	    //code gen
 	    StringBuilder sb = new StringBuilder(); // Stores the generated program
-	    void emit(String s) { sb.append(s); }   // Short-hand for adding to the program
+	    Identifier writeTo = null;
+	    void emit(String s, Identifier funct) { // Short-hand for adding to the program
+	        if(funct == null){
+	            sb.append(s); 
+	        } else {
+	            funct.storeFunct.append(s);
+	        }
+	    }   
 
 	    // Emit the preamble material for our program
 	    void openProgram() {
-	        emit("import java.util.*;\n");
-	        emit("public class NoVwlsProgram {\n");
-	        emit("  public static void main(String[] args) throws Exception {\n");
-	        emit("    Scanner in = new Scanner(System.in);\n");
+	        emit("import java.util.*;\n", null);
+	        emit("public class NoVwlsProgram {\n", null);
+	        emit("  public static void main(String[] args) throws Exception {\n", null);
+	        emit("    Scanner in = new Scanner(System.in);\n", null);
 	    }
 
 	    // Emit the postamble material for our program
 	    void closeProgram() {
-	        emit("  }\n");
-	        emit("}\n");
+	        emit("  }\n", null);
+
+	        //export functions **dont forget to check function definition **
+	        for (Identifier object : mainTable.table.values()) {
+	        
+	            if(object.isFunction){
+	                //type 
+	                String type = object.type;
+	                if(type.equals("strng")){
+	                    type = "String ";
+	                } else if (type.equals("nt")){
+	                    type = "int ";
+	                } else if (type.equals("flt")){
+	                    type = "double ";
+	                } else if (type.equals("bl")){
+	                    type = "boolean ";
+	                } else if (type.equals("chr")){
+	                    type = "char ";
+	                }
+
+	                //establish function and parameters
+	                emit("public static " + type + " " + object.id + "( " , null);
+	                for(int p = 0; p < object.parameters.size(); p++){
+	                    Identifier parameter = object.parameters.get(p);
+
+	                    //type 
+	                    String ptype = parameter.type;
+	                    if(ptype.equals("strng")){
+	                        ptype = "String ";
+	                    } else if (ptype.equals("nt")){
+	                        ptype = "int ";
+	                    } else if (ptype.equals("flt")){
+	                        ptype = "double ";
+	                    } else if (ptype.equals("bl")){
+	                        ptype = "boolean ";
+	                    } else if (ptype.equals("chr")){
+	                        ptype = "char ";
+	                    }
+	                    emit( ptype + " " + parameter.id, null);
+	                    if((p+1) != object.parameters.size()){
+	                        emit( ", ", null);
+	                    }
+	                }
+	                emit(" ) { \n", null);
+
+	                //emit content
+	                emit(object.storeFunct.toString(), null);
+
+	                //finish
+	                emit("}\n", null);
+	            }
+	        }
+
+	        emit("}\n", null);
 	    }
 
 	    // Declare LHS if first-time assignment; otherwise plain assignment.
@@ -188,7 +248,7 @@ public class NoVwlsLexer extends Lexer {
 	            type = "char ";
 	        }
 
-	        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n");
+	        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n", writeTo);
 	    }
 
 	    // Write the generated Java to file.

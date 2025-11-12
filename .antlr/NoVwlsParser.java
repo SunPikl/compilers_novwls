@@ -126,6 +126,7 @@ public class NoVwlsParser extends Parser {
 	        //function
 	        boolean isFunction = false; //if DNT is a function
 	        List<Identifier> parameters = new ArrayList<>();
+	        StringBuilder storeFunct = new StringBuilder();
 	        
 	        List<Object> arrayValues = new ArrayList<>();
 	        List<List<Object>> array2DValues = new ArrayList<>();
@@ -170,20 +171,79 @@ public class NoVwlsParser extends Parser {
 
 	    //code gen
 	    StringBuilder sb = new StringBuilder(); // Stores the generated program
-	    void emit(String s) { sb.append(s); }   // Short-hand for adding to the program
+	    Identifier writeTo = null;
+	    void emit(String s, Identifier funct) { // Short-hand for adding to the program
+	        if(funct == null){
+	            sb.append(s); 
+	        } else {
+	            funct.storeFunct.append(s);
+	        }
+	    }   
 
 	    // Emit the preamble material for our program
 	    void openProgram() {
-	        emit("import java.util.*;\n");
-	        emit("public class NoVwlsProgram {\n");
-	        emit("  public static void main(String[] args) throws Exception {\n");
-	        emit("    Scanner in = new Scanner(System.in);\n");
+	        emit("import java.util.*;\n", null);
+	        emit("public class NoVwlsProgram {\n", null);
+	        emit("  public static void main(String[] args) throws Exception {\n", null);
+	        emit("    Scanner in = new Scanner(System.in);\n", null);
 	    }
 
 	    // Emit the postamble material for our program
 	    void closeProgram() {
-	        emit("  }\n");
-	        emit("}\n");
+	        emit("  }\n", null);
+
+	        //export functions **dont forget to check function definition **
+	        for (Identifier object : mainTable.table.values()) {
+	        
+	            if(object.isFunction){
+	                //type 
+	                String type = object.type;
+	                if(type.equals("strng")){
+	                    type = "String ";
+	                } else if (type.equals("nt")){
+	                    type = "int ";
+	                } else if (type.equals("flt")){
+	                    type = "double ";
+	                } else if (type.equals("bl")){
+	                    type = "boolean ";
+	                } else if (type.equals("chr")){
+	                    type = "char ";
+	                }
+
+	                //establish function and parameters
+	                emit("public static " + type + " " + object.id + "( " , null);
+	                for(int p = 0; p < object.parameters.size(); p++){
+	                    Identifier parameter = object.parameters.get(p);
+
+	                    //type 
+	                    String ptype = parameter.type;
+	                    if(ptype.equals("strng")){
+	                        ptype = "String ";
+	                    } else if (ptype.equals("nt")){
+	                        ptype = "int ";
+	                    } else if (ptype.equals("flt")){
+	                        ptype = "double ";
+	                    } else if (ptype.equals("bl")){
+	                        ptype = "boolean ";
+	                    } else if (ptype.equals("chr")){
+	                        ptype = "char ";
+	                    }
+	                    emit( ptype + " " + parameter.id, null);
+	                    if((p+1) != object.parameters.size()){
+	                        emit( ", ", null);
+	                    }
+	                }
+	                emit(" ) { \n", null);
+
+	                //emit content
+	                emit(object.storeFunct.toString(), null);
+
+	                //finish
+	                emit("}\n", null);
+	            }
+	        }
+
+	        emit("}\n", null);
 	    }
 
 	    // Declare LHS if first-time assignment; otherwise plain assignment.
@@ -200,7 +260,7 @@ public class NoVwlsParser extends Parser {
 	            type = "char ";
 	        }
 
-	        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n");
+	        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n", writeTo);
 	    }
 
 	    // Write the generated Java to file.
@@ -983,7 +1043,7 @@ public class NoVwlsParser extends Parser {
 			setState(157);
 			((PrintStmtContext)_localctx).first = printExpr();
 
-			        emit("    System.out.print(" + ((PrintStmtContext)_localctx).first.code  + ");\n");
+			        emit("    System.out.print(" + ((PrintStmtContext)_localctx).first.code  + ");\n", writeTo);
 			    
 			setState(165);
 			_errHandler.sync(this);
@@ -996,7 +1056,7 @@ public class NoVwlsParser extends Parser {
 				setState(160);
 				((PrintStmtContext)_localctx).more = printExpr();
 
-				        emit("    System.out.print(" + ((PrintStmtContext)_localctx).more.code  + ");\n");
+				        emit("    System.out.print(" + ((PrintStmtContext)_localctx).more.code  + ");\n", writeTo);
 				    
 				}
 				}
@@ -1010,7 +1070,7 @@ public class NoVwlsParser extends Parser {
 			match(SCOLN);
 			 
 			        System.out.print("\n"); 
-			        emit("    System.out.println(" + ");\n");
+			        emit("    System.out.println(" + ");\n", writeTo);
 			    
 			}
 		}
@@ -1047,7 +1107,7 @@ public class NoVwlsParser extends Parser {
 			setState(172);
 			((PrintExprContext)_localctx).expr = expr();
 			 
-			        //emit("    System.out.print(" + ((PrintExprContext)_localctx).expr.code  + ");\n");
+			        //emit("    System.out.print(" + ((PrintExprContext)_localctx).expr.code  + ");\n", writeTo);
 			        ((PrintExprContext)_localctx).code =  ((PrintExprContext)_localctx).expr.code;
 
 			        if(((PrintExprContext)_localctx).expr.type == null){
@@ -1182,13 +1242,13 @@ public class NoVwlsParser extends Parser {
 			        // } else { //if false
 			        //     emit("if (false) {\n");
 			        // }
-			         emit("if (" + ((CompareStmtContext)_localctx).comparison.code + ") {\n");
+			         emit("if (" + ((CompareStmtContext)_localctx).comparison.code + ") {\n", writeTo);
 			        
 			    
 			setState(180);
 			blockStmt();
 
-			        emit("}\n");
+			        emit("}\n", writeTo);
 			    
 			setState(183);
 			_errHandler.sync(this);
@@ -1281,9 +1341,12 @@ public class NoVwlsParser extends Parser {
 			        
 			        //store funct
 			        scopeStack.peek().table.put(function.id, function);
+			        mainTable.table.put(function.id, function);
+
+			        //change string builder
+			        writeTo = function;
 
 			        //System.out.println("DEBUG: DNT " + ((FunctStmtContext)_localctx).a.getText() + " is " + scopeStack.peek().table.get(((FunctStmtContext)_localctx).a.getText()).id);
-
 			    
 			setState(189);
 			match(L_PRNTH);
@@ -1391,6 +1454,7 @@ public class NoVwlsParser extends Parser {
 			match(R_CRLYB);
 
 			        //System.out.println("DEBUG: type of funct:" + ((FunctStmtContext)_localctx).d.type + " type of factor:" + ((FunctStmtContext)_localctx).factor.type);
+			        String returnVal = "String ";
 			        
 			        //attach funct value 
 			        if(!(((FunctStmtContext)_localctx).d.type.equals(((FunctStmtContext)_localctx).factor.type))){
@@ -1402,12 +1466,14 @@ public class NoVwlsParser extends Parser {
 			            } else {
 			                scopeStack.peek().table.get(((FunctStmtContext)_localctx).a.getText()).value = ((FunctStmtContext)_localctx).factor.value;
 			            }
-			            
+			            emit("return " + ((FunctStmtContext)_localctx).factor.code + "; \n", writeTo);  
 			        }
 
 			        //end scope
 			        scopeStack.pop();
-			        //System.out.println("DEBUG: scope deleted");
+			        
+			        //reset string builder 
+			        writeTo = null;
 
 			        //clear list
 			        //scopeStack.peek().table.get(((FunctStmtContext)_localctx).a.getText()).parameters = new ArrayList<>();
@@ -1528,12 +1594,12 @@ public class NoVwlsParser extends Parser {
 			setState(229);
 			match(R_PRNTH);
 
-			        emit("if (" + ((WhileLoopContext)_localctx).comparison.code + ") {\n");
+			        emit("if (" + ((WhileLoopContext)_localctx).comparison.code + ") {\n", writeTo);
 			    
 			setState(231);
 			blockStmt();
 
-			        emit("}\n");
+			        emit("}\n", writeTo);
 			    
 			}
 		}
@@ -2823,6 +2889,8 @@ public class NoVwlsParser extends Parser {
 			        //check if factor matches type set in function
 			        //assign if so, error if not
 
+			        emit(id + "(", writeTo);
+
 			        //init check for amount params 
 			        int paramCount = 0;
 			    
@@ -2852,6 +2920,12 @@ public class NoVwlsParser extends Parser {
 				                    scopeStack.peek().table.get(currentId.id).parameters.get(0).arrayValues = ((FunctCallContext)_localctx).factor.arrayValues;
 				                } else if (((FunctCallContext)_localctx).factor.is2DArray){
 				                    scopeStack.peek().table.get(currentId.id).parameters.get(0).array2DValues = ((FunctCallContext)_localctx).factor.array2DValues;
+				                }
+
+				                if(currentId.parameters.size() >= 1){
+				                    emit(((FunctCallContext)_localctx).factor.code + ", ", writeTo);
+				                } else {
+				                    emit(((FunctCallContext)_localctx).factor.code , writeTo);
 				                }
 				            } else {
 				                error((((FunctCallContext)_localctx).factor!=null?(((FunctCallContext)_localctx).factor.start):null), "The input parameter input type '" + ((FunctCallContext)_localctx).factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
@@ -2892,6 +2966,9 @@ public class NoVwlsParser extends Parser {
 					                } else if (((FunctCallContext)_localctx).factor.is2DArray){
 					                    scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).array2DValues = ((FunctCallContext)_localctx).factor.array2DValues;
 					                }
+
+					                
+					                
 					            } else {
 					                error((((FunctCallContext)_localctx).factor!=null?(((FunctCallContext)_localctx).factor.start):null), "The input parameter input type '" + ((FunctCallContext)_localctx).factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
 					            }
@@ -2900,6 +2977,11 @@ public class NoVwlsParser extends Parser {
 					        }
 
 					        paramCount ++;
+					        if(paramCount < currentId.parameters.size()){
+					            emit(((FunctCallContext)_localctx).factor.code + ", ", writeTo);
+					        } else {
+					            emit(((FunctCallContext)_localctx).factor.code , writeTo);
+					        }
 
 					    
 					}
@@ -2925,6 +3007,7 @@ public class NoVwlsParser extends Parser {
 			        ((FunctCallContext)_localctx).type =  currentId.type;
 			        ((FunctCallContext)_localctx).content =  currentId.content;
 			        ((FunctCallContext)_localctx).hasKnownValue =  currentId.hasKnown;
+			        emit( ");\n", writeTo);
 
 			    
 			}

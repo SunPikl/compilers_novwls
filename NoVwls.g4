@@ -16,6 +16,7 @@ grammar NoVwls;
         //function
         boolean isFunction = false; //if DNT is a function
         List<Identifier> parameters = new ArrayList<>();
+        StringBuilder storeFunct = new StringBuilder();
         
         List<Object> arrayValues = new ArrayList<>();
         List<List<Object>> array2DValues = new ArrayList<>();
@@ -60,20 +61,79 @@ grammar NoVwls;
 
     //code gen
     StringBuilder sb = new StringBuilder(); // Stores the generated program
-    void emit(String s) { sb.append(s); }   // Short-hand for adding to the program
+    Identifier writeTo = null;
+    void emit(String s, Identifier funct) { // Short-hand for adding to the program
+        if(funct == null){
+            sb.append(s); 
+        } else {
+            funct.storeFunct.append(s);
+        }
+    }   
 
     // Emit the preamble material for our program
     void openProgram() {
-        emit("import java.util.*;\n");
-        emit("public class NoVwlsProgram {\n");
-        emit("  public static void main(String[] args) throws Exception {\n");
-        emit("    Scanner in = new Scanner(System.in);\n");
+        emit("import java.util.*;\n", null);
+        emit("public class NoVwlsProgram {\n", null);
+        emit("  public static void main(String[] args) throws Exception {\n", null);
+        emit("    Scanner in = new Scanner(System.in);\n", null);
     }
 
     // Emit the postamble material for our program
     void closeProgram() {
-        emit("  }\n");
-        emit("}\n");
+        emit("  }\n", null);
+
+        //export functions **dont forget to check function definition **
+        for (Identifier object : mainTable.table.values()) {
+        
+            if(object.isFunction){
+                //type 
+                String type = object.type;
+                if(type.equals("strng")){
+                    type = "String ";
+                } else if (type.equals("nt")){
+                    type = "int ";
+                } else if (type.equals("flt")){
+                    type = "double ";
+                } else if (type.equals("bl")){
+                    type = "boolean ";
+                } else if (type.equals("chr")){
+                    type = "char ";
+                }
+
+                //establish function and parameters
+                emit("public static " + type + " " + object.id + "( " , null);
+                for(int p = 0; p < object.parameters.size(); p++){
+                    Identifier parameter = object.parameters.get(p);
+
+                    //type 
+                    String ptype = parameter.type;
+                    if(ptype.equals("strng")){
+                        ptype = "String ";
+                    } else if (ptype.equals("nt")){
+                        ptype = "int ";
+                    } else if (ptype.equals("flt")){
+                        ptype = "double ";
+                    } else if (ptype.equals("bl")){
+                        ptype = "boolean ";
+                    } else if (ptype.equals("chr")){
+                        ptype = "char ";
+                    }
+                    emit( ptype + " " + parameter.id, null);
+                    if((p+1) != object.parameters.size()){
+                        emit( ", ", null);
+                    }
+                }
+                emit(" ) { \n", null);
+
+                //emit content
+                emit(object.storeFunct.toString(), null);
+
+                //finish
+                emit("}\n", null);
+            }
+        }
+
+        emit("}\n", null);
     }
 
     // Declare LHS if first-time assignment; otherwise plain assignment.
@@ -90,7 +150,7 @@ grammar NoVwls;
             type = "char ";
         }
 
-        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n");
+        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n", writeTo);
     }
 
     // Write the generated Java to file.
@@ -381,22 +441,22 @@ arrayElement returns [boolean hasKnownValue, Object elementValue, String element
 
 printStmt : KW_PRNT '(' first=printExpr 
     {
-        emit("    System.out.print(" + $first.code  + ");\n");
+        emit("    System.out.print(" + $first.code  + ");\n", writeTo);
     }
     (CMM more=printExpr
     {
-        emit("    System.out.print(" + $more.code  + ");\n");
+        emit("    System.out.print(" + $more.code  + ");\n", writeTo);
     }
     
     )* ')' SCOLN 
     { 
         System.out.print("\n"); 
-        emit("    System.out.println(" + ");\n");
+        emit("    System.out.println(" + ");\n", writeTo);
     } ;
 
 printExpr returns[String code]: expr 
     { 
-        //emit("    System.out.print(" + $expr.code  + ");\n");
+        //emit("    System.out.print(" + $expr.code  + ");\n", writeTo);
         $code = $expr.code;
 
         if($expr.type == null){
@@ -484,12 +544,12 @@ compareStmt : KW_F '(' comparison ')'
         // } else { //if false
         //     emit("if (false) {\n");
         // }
-         emit("if (" + $comparison.code + ") {\n");
+         emit("if (" + $comparison.code + ") {\n", writeTo);
         
     }
      blockStmt 
     {
-        emit("}\n");
+        emit("}\n", writeTo);
     }
     elseC? ; 
 
@@ -504,9 +564,12 @@ functStmt : KW_FNCTN d=dataType a=DNT
         
         //store funct
         scopeStack.peek().table.put(function.id, function);
+        mainTable.table.put(function.id, function);
+
+        //change string builder
+        writeTo = function;
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
-
     }
     '(' (dt=dataType b=DNT 
     {
@@ -560,6 +623,7 @@ functStmt : KW_FNCTN d=dataType a=DNT
     stmt* KW_RTN factor SCOLN '}'
     {
         //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
+        String returnVal = "String ";
         
         //attach funct value 
         if(!($d.type.equals($factor.type))){
@@ -571,12 +635,14 @@ functStmt : KW_FNCTN d=dataType a=DNT
             } else {
                 scopeStack.peek().table.get($a.getText()).value = $factor.value;
             }
-            
+            emit("return " + $factor.code + "; \n", writeTo);  
         }
 
         //end scope
         scopeStack.pop();
-        //System.out.println("DEBUG: scope deleted");
+        
+        //reset string builder 
+        writeTo = null;
 
         //clear list
         //scopeStack.peek().table.get($a.getText()).parameters = new ArrayList<>();
@@ -589,11 +655,11 @@ loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
 whileLoop : KW_WHL 
     L_PRNTH comparison R_PRNTH 
     {
-        emit("if (" + $comparison.code + ") {\n");
+        emit("if (" + $comparison.code + ") {\n", writeTo);
     }
     blockStmt
     {
-        emit("}\n");
+        emit("}\n", writeTo);
     }
     ;
 
@@ -985,6 +1051,8 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         //check if factor matches type set in function
         //assign if so, error if not
 
+        emit(id + "(", writeTo);
+
         //init check for amount params 
         int paramCount = 0;
     }
@@ -1008,6 +1076,12 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                     scopeStack.peek().table.get(currentId.id).parameters.get(0).arrayValues = $factor.arrayValues;
                 } else if ($factor.is2DArray){
                     scopeStack.peek().table.get(currentId.id).parameters.get(0).array2DValues = $factor.array2DValues;
+                }
+
+                if(currentId.parameters.size() >= 1){
+                    emit($factor.code + ", ", writeTo);
+                } else {
+                    emit($factor.code , writeTo);
                 }
             } else {
                 error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
@@ -1039,6 +1113,9 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                 } else if ($factor.is2DArray){
                     scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).array2DValues = $factor.array2DValues;
                 }
+
+                
+                
             } else {
                 error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
             }
@@ -1047,6 +1124,11 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         }
 
         paramCount ++;
+        if(paramCount < currentId.parameters.size()){
+            emit($factor.code + ", ", writeTo);
+        } else {
+            emit($factor.code , writeTo);
+        }
 
     }
     )*)? ')'
@@ -1062,6 +1144,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         $type = currentId.type;
         $content = currentId.content;
         $hasKnownValue = currentId.hasKnown;
+        emit( ");\n", writeTo);
 
     }
     ; 

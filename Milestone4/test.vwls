@@ -21,3 +21,14 @@ f(x>y){
 f(x<y){
     prnt(y," is greater than ",x);
 }
+
+//function
+Fnctn nt testing(nt quq, strng ew){
+    nt nknwn = 3;
+    prnt(nknwn);
+    rtn nknwn;
+}
+
+testing(3,"hi");
+
+prnt("hi");
