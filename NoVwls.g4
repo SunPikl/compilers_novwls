@@ -653,34 +653,56 @@ loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
 
 // While loop
 whileLoop : KW_WHL 
-    L_PRNTH comparison R_PRNTH 
+    L_PRNTH 
     {
-        emit("if (" + $comparison.code + ") {\n", writeTo);
+        emit("while(");
     }
+    comparison
+    {
+        //replace with string of comparison
+        //if($comparison.value > 0){ //if true
+        //    emit("true");
+        //} else {
+        //    emit("false");
+        //}
+        emit($comparison.code);
+    }
+     R_PRNTH 
+     {
+        emit("){");
+     }
     blockStmt
-    {
-        emit("}\n", writeTo);
-    }
+        {emit("}");}
     ;
 
 // For loop - FIXED structure
 forLoop : KW_FR 
-    L_PRNTH 
+    L_PRNTH
+    {
+        emit("for(");
+    } 
         (assignStmt | SCOLN)    // initialization
-        comparison SCOLN         // condition  
+        comparison SCOLN         // condition 
+        {
+            emit($comparison.code + ";");
+        } 
         (forLoopInc)?      // increment
-    R_PRNTH 
+    R_PRNTH {emit(")");}
     blockStmt
     ;
 
 // Do-While loop  
-doWhileLoop : KW_D 
+doWhileLoop : KW_D {emit("do{}");}
     blockStmt
-    KW_WHL L_PRNTH comparison R_PRNTH SCOLN
+    KW_WHL L_PRNTH comparison R_PRNTH SCOLN {emit("}while("+ $comparison.code + ")");}
     ;
 
 // Break statement
-breakStmt : KW_BRK SCOLN;
+breakStmt : KW_BRK SCOLN 
+    {
+        emit("break;");
+    }
+    ;
 
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
@@ -689,8 +711,8 @@ elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC;
 // For loop increment options
 forLoopInc : 
     assignStmt     // x = x + 1
-    | DNT INC SCOLN                // x++
-    | DNT DCR SCOLN               // x--
+    | DNT INC SCOLN  {emit("++");}              // x++
+    | DNT DCR SCOLN  {emit("--");}             // x--
     ;
 
 expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
