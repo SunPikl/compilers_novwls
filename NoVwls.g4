@@ -645,8 +645,8 @@ elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC;
 // For loop increment options
 forLoopInc : 
     assignStmt     // x = x + 1
-    | DNT INC SCOLN  {emit("++");}              // x++
-    | DNT DCR SCOLN  {emit("--");}             // x--
+    | DNT INC  {emit($DNT.getText()+"++");}              // x++
+    | DNT DCR  {emit($DNT.getText()+"--");}             // x--
     ;
 
 expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
