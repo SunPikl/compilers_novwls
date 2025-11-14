@@ -52,7 +52,7 @@ public class NoVwlsLexer extends Lexer {
 			"'scnBL'", "'Fnctn'", "'f'", "'ls'", "'fr'", "'whl'", "'d'", "'rtn'", 
 			"'brk'", null, "'nt'", null, "'flt'", null, "'bl'", null, "'chr'", null, 
 			"'strng'", "'vd'", "'rry'", "'('", "')'", "'{'", "'}'", "'='", "'+'", 
-			"'-'", "'/'", "'*'", "'%'", "'<'", "'>'", "'=<'", "'=>'", "'=='", "'!='", 
+			"'-'", "'/'", "'*'", "'%'", "'<'", "'>'", "'<='", "'>='", "'=='", "'!='", 
 			"';'", "','", "'['", "']'", "'++'", "'--'"
 		};
 	}
@@ -113,6 +113,7 @@ public class NoVwlsLexer extends Lexer {
 
 	        //function
 	        boolean isFunction = false; //if DNT is a function
+	        boolean isImplemented = false; //if function has been defined
 	        List<Identifier> parameters = new ArrayList<>();
 	        StringBuilder storeFunct = new StringBuilder();
 	        
@@ -178,6 +179,7 @@ public class NoVwlsLexer extends Lexer {
 
 	    // Emit the postamble material for our program
 	    void closeProgram() {
+	        emit(" in.close();\n", null);
 	        emit("  }\n", null);
 
 	        //export functions **dont forget to check function definition **
@@ -200,28 +202,34 @@ public class NoVwlsLexer extends Lexer {
 
 	                //establish function and parameters
 	                emit("public static " + type + " " + object.id + "( " , null);
-	                for(int p = 0; p < object.parameters.size(); p++){
-	                    Identifier parameter = object.parameters.get(p);
+	               
+	                if(object.parameters != null){
+	                    for(int p = 0; p < object.parameters.size(); p++){
+	                        Identifier parameter = object.parameters.get(p);
 
-	                    //type 
-	                    String ptype = parameter.type;
-	                    if(ptype.equals("strng")){
-	                        ptype = "String ";
-	                    } else if (ptype.equals("nt")){
-	                        ptype = "int ";
-	                    } else if (ptype.equals("flt")){
-	                        ptype = "double ";
-	                    } else if (ptype.equals("bl")){
-	                        ptype = "boolean ";
-	                    } else if (ptype.equals("chr")){
-	                        ptype = "char ";
-	                    }
-	                    emit( ptype + " " + parameter.id, null);
-	                    if((p+1) != object.parameters.size()){
-	                        emit( ", ", null);
+	                        //type 
+	                        String ptype = parameter.type;
+	                        if(ptype.equals("strng")){
+	                            ptype = "String ";
+	                        } else if (ptype.equals("nt")){
+	                            ptype = "int ";
+	                        } else if (ptype.equals("flt")){
+	                            ptype = "double ";
+	                        } else if (ptype.equals("bl")){
+	                            ptype = "boolean ";
+	                        } else if (ptype.equals("chr")){
+	                            ptype = "char ";
+	                        }
+	                        emit( ptype + " " + parameter.id, null);
+	                        if((p+1) != object.parameters.size()){
+	                            emit( ", ", null);
+	                        }
 	                    }
 	                }
 	                emit(" ) { \n", null);
+
+	                //open scanner
+	                emit(" Scanner in = new Scanner(System.in);\n", null);
 
 	                //emit content
 	                emit(object.storeFunct.toString(), null);
@@ -484,9 +492,9 @@ public class NoVwlsLexer extends Lexer {
 		"\u0129\u0005*\u0000\u0000\u0129H\u0001\u0000\u0000\u0000\u012a\u012b\u0005"+
 		"%\u0000\u0000\u012bJ\u0001\u0000\u0000\u0000\u012c\u012d\u0005<\u0000"+
 		"\u0000\u012dL\u0001\u0000\u0000\u0000\u012e\u012f\u0005>\u0000\u0000\u012f"+
-		"N\u0001\u0000\u0000\u0000\u0130\u0131\u0005=\u0000\u0000\u0131\u0132\u0005"+
-		"<\u0000\u0000\u0132P\u0001\u0000\u0000\u0000\u0133\u0134\u0005=\u0000"+
-		"\u0000\u0134\u0135\u0005>\u0000\u0000\u0135R\u0001\u0000\u0000\u0000\u0136"+
+		"N\u0001\u0000\u0000\u0000\u0130\u0131\u0005<\u0000\u0000\u0131\u0132\u0005"+
+		"=\u0000\u0000\u0132P\u0001\u0000\u0000\u0000\u0133\u0134\u0005>\u0000"+
+		"\u0000\u0134\u0135\u0005=\u0000\u0000\u0135R\u0001\u0000\u0000\u0000\u0136"+
 		"\u0137\u0005=\u0000\u0000\u0137\u0138\u0005=\u0000\u0000\u0138T\u0001"+
 		"\u0000\u0000\u0000\u0139\u013a\u0005!\u0000\u0000\u013a\u013b\u0005=\u0000"+
 		"\u0000\u013bV\u0001\u0000\u0000\u0000\u013c\u013d\u0005;\u0000\u0000\u013d"+

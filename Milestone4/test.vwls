@@ -22,13 +22,34 @@ f(x<y){
     prnt(y," is greater than ",x);
 }
 
-//function
+Fnctn flt come(nt wlke, flt slkfa);
+
+//function 
 Fnctn nt testing(nt quq, strng ew){
-    nt nknwn = 3;
-    prnt(nknwn);
+    nt nknwn = quq;
+    prnt("in function with your value ",nknwn);
+    come(3, 3.4);
     rtn nknwn;
 }
 
-testing(3,"hi");
+Fnctn flt come(nt wlke, flt slkfa){
+    testing(4,"bro");
+    prnt("here");
+    rtn 3.3;
+}
 
-prnt("hi");
+nt w = testing(z,"hi");
+//come();
+prnt(w);
+
+Fnctn chr test(){
+    rtn 'a';
+}
+
+whl(x<y){
+    prnt(y," is greater than ",x);
+    x = x + 1;
+    prnt("here");
+    //brk;
+} 
+
