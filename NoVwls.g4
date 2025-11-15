@@ -765,14 +765,14 @@ forLoop : KW_FR
             emit($comparison.code + ";", writeTo);
         } 
         (forLoopInc)?      // increment
-    R_PRNTH {emit(")", writeTo);}
-    blockStmt
+    R_PRNTH {emit("){", writeTo);}
+    blockStmt {emit("}", writeTo);}
     ;
 
 // Do-While loop  
-doWhileLoop : KW_D {emit("do{}", writeTo);}
+doWhileLoop : KW_D {emit("do{\n", writeTo);}
     blockStmt
-    KW_WHL L_PRNTH comparison R_PRNTH SCOLN {emit("}while("+ $comparison.code + ")", writeTo);}
+    KW_WHL L_PRNTH comparison R_PRNTH SCOLN {emit("}while("+ $comparison.code + ");\n", writeTo);}
     ;
 
 // Break statement
@@ -789,8 +789,8 @@ elseC : KW_LS blockStmt;
 // For loop increment options
 forLoopInc : 
     assignStmt     // x = x + 1
-    | DNT INC SCOLN  {emit("++", writeTo);}              // x++
-    | DNT DCR SCOLN  {emit("--", writeTo);}             // x--
+    | DNT INC  {emit($DNT.getText()+"++", writeTo);}              // x++
+    | DNT DCR  {emit($DNT.getText()+"--", writeTo);}             // x--
     ;
 
 expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
