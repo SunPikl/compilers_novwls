@@ -219,10 +219,10 @@ L_SQBR : '[' ;
 R_SQBR : ']' ;
 INC : '++';
 DCR : '--';
-WS : [ \t\r\n]+ -> skip ;
 CMMNT_LN : '//'~[\n\r]* -> skip ;
 CMMNT_BLCK : '/*' .*? '*/' -> skip ;
 DNT : [a-zA-Z][a-zA-Z0-9_]* ;
+WS : [ \t\r\n]+ -> skip ;
 
 //~~~~~~~~~~~~~~~~~~~ EBNF Grammar ~~~~~~~~~~~~~~~~~~
 program : 
@@ -364,17 +364,16 @@ assignStmt : (dt=dataType)? DNT
     } SCOLN ;
 
 rhs returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]:
-      expr 
-        {
-            $hasKnownValue = $expr.hasKnownValue;
-            $type = $expr.type;
-            $value = $expr.value;
-            $content = $expr.content;
-            $isArray = $expr.isArray;
-            $is2DArray = $expr.is2DArray;
-            $arrayValues = $expr.arrayValues;
-            $array2DValues = $expr.array2DValues;
-            $code = $expr.code;
+      e = expr
+        {$hasKnownValue = $e.hasKnownValue;   
+            $type = $e.type;                     
+            $value = $e.value;                   
+            $content = $e.content;              
+            $isArray = $e.isArray;               
+            $is2DArray = $e.is2DArray;           
+            $arrayValues = $e.arrayValues;     
+            $array2DValues = $e.array2DValues; 
+            $code = $e.code;
         }
     | arrayLiteral
         {
@@ -915,7 +914,7 @@ comparisonExpr returns [boolean hasKnownValue, String type, float value, String 
     })*;
 
 additiveExpr returns [boolean hasKnownValue, String type, float value, String code] : 
-    a=multiplicativeExpr 
+    a=multiplicativeExpr
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
@@ -930,7 +929,7 @@ additiveExpr returns [boolean hasKnownValue, String type, float value, String co
             } else {
                 $value = $value - $b.value;
             }
-            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+            if ("flt".equals($a.type) || "flt".equals($b.type)) {
                 $type = "flt";
                 $code = "" + $value;
             } else {
@@ -939,12 +938,12 @@ additiveExpr returns [boolean hasKnownValue, String type, float value, String co
             }
         } else {
             $hasKnownValue = false;
-            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+            if ("flt".equals($a.type) || "flt".equals($b.type)) {
                 $type = "flt";
             } else {
                 $type = "nt";
             }
-            $code = "(" + $code + $op.getText() + $b.code + ")";  
+            $code = "(" + $code + $op.getText() + $b.code + ")"; 
         }
     })*;
 
@@ -960,7 +959,7 @@ multiplicativeExpr returns [boolean hasKnownValue, String type, float value, Str
     {
         if ($b.hasKnownValue && $op.getText().equals("/") && $b.value == 0) {
             error($op, "division by zero");
-            $hasKnownValue = false;  
+            $hasKnownValue = false; 
             $code = "Error";
         } else if ($hasKnownValue && $b.hasKnownValue) {
             if ($op.getText().equals("*")) {
@@ -970,7 +969,7 @@ multiplicativeExpr returns [boolean hasKnownValue, String type, float value, Str
             } else {
                 $value = $value / $b.value;
             }
-            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+            if ("flt".equals($a.type) || "flt".equals($b.type)) {
                 $type = "flt";
                 $code = "" + $value;
             } else {
@@ -979,14 +978,15 @@ multiplicativeExpr returns [boolean hasKnownValue, String type, float value, Str
             }
         } else {
             $hasKnownValue = false;
-            if ($a.type.equals("flt") || $b.type.equals("flt")) {
+            // FIX 4: Safe string comparison
+            if ("flt".equals($a.type) || "flt".equals($b.type)) {
                 $type = "flt";
             } else {
                 $type = "nt";
             }
             $code = "(" + $code + $op.getText() + $b.code + ")"; 
         }
-    })*; 
+    })*;
 
 unaryExpr returns [boolean hasKnownValue, String type, float value, String code]: 
     ('+' | '-' | '!')? a=factor 
@@ -1104,59 +1104,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
                 $code = "(" + $expr.code + ")";
             }
         }
-    | functCall
-    {
-         
-        $hasKnownValue = $functCall.hasKnownValue;
-        $value = $functCall.value;
-        $type = $functCall.type;
-        $content = $functCall.content;
-        $isArray = false;
-        $is2DArray = false;
-        // if($functCall.type.equals("strng") || $functCall.type.equals("chr")){
-        //     $code = "" + $content;
-        // } else $code = "" + $value;
-        $code = $functCall.code;
-
-        
-    };
-
-    
-arrayAccess returns [boolean hasKnownValue, String type, float value, String content, String arrayName, String indexCode, String code, Token arrayCtx]: 
-    arrName=DNT L_SQBR index=additiveExpr R_SQBR 
-    { 
-        $hasKnownValue = $index.hasKnownValue && $index.hasKnownValue;
-        
-        $arrayName = $arrName.getText();        // String: The array name
-        $indexCode = $index.code;               // String: Code for the index expression
-        $arrayCtx = $arrName;                   // **FIX: Pass the Token object ($arrName is the Token)**
-
-        // --- Semantic Analysis (Type checking/lookup) ---
-        Identifier currId = null;
-        for(int i = scopeStack.size()-1; i >= 0; i--){
-            if(scopeStack.get(i).table.containsKey($arrayName)){ 
-                currId = scopeStack.get(i).table.get($arrayName);
-                break;
-            } 
-        } 
-
-        if (currId == null) {
-            error($arrayCtx, "Array '" + $arrayName + "' used before declaration.");
-            $type = "int";
-        } else if (!currId.isArray && !currId.is2DArray) { 
-            error($arrayCtx, "'" + $arrayName + "' is not an array.");
-            $type = "int";
-        } else {
-            String elementType = currId.type.substring(0, currId.type.length() - 2); 
-            $type = elementType;
-            used.add($arrayName);
-        }
-
-        $code = $arrayName + "[" + $index.code + "]";
-        $value = 0.0f;
-        $content = null;
-    }
-;
+    ;
 
 functCall returns [boolean hasKnownValue, String type, float value, String content, String code]: 
     DNT '('
@@ -1169,122 +1117,119 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
             if(currentId != null) break;
         }
         if (currentId == null) {
+            // Report the error
             error($DNT, "Function '" + $DNT.getText() + "' does not exist.");
+            currentId = new Identifier();
+            currentId.id = id;
+            currentId.type = "null";            // safe default type
+            currentId.value = 0.0f;
+            currentId.content = null;
+            currentId.parameters = new ArrayList<Identifier>();
+            currentId.hasKnown = false;
+            currentId.isFunction = false;
+            currentId.isArray = false;
+            currentId.is2DArray = false;
         } else {
             currentId.hasBeenUsed = true;
-            $hasKnownValue = currentId.hasKnown;
-            
+            // leave currentId as-is (real function entry)
         }
 
-        //check if factor matches type set in function
-        //assign if so, error if not
-
+        // initialize return fields so downstream code never sees nulls
+        $hasKnownValue = currentId.hasKnown;
+        $type = currentId.type != null ? currentId.type : "null";
+        $value = currentId.value;
+        $content = currentId.content;
         emit(id + "(", writeTo);
         $code = id + "(";
 
-        //init check for amount params 
+        // init param counter
         int paramCount = 0;
     }
-    (factor 
-    {
-        //test if params
-        if((currentId !=null) && (currentId.parameters.size() > 0)){
-            Identifier inputPar = currentId.parameters.get(0);
-            //check param
-            if($factor.type.equals(inputPar.type)){
-                //System.out.println("DEBUG: parameter success");
-                currentId.parameters.get(0).value = $factor.value;
-                currentId.parameters.get(0).content = $factor.content;
-                currentId.parameters.get(0).type = $factor.type;
-                currentId.parameters.get(0).hasKnown = $factor.hasKnownValue;
-                currentId.parameters.get(0).isFunction = false;
-                currentId.parameters.get(0).isImplemented = false;
-                currentId.parameters.get(0).isArray = $factor.isArray;
-                currentId.parameters.get(0).is2DArray = $factor.is2DArray;
-
-                if($factor.isArray){
-                    currentId.parameters.get(0).arrayValues = $factor.arrayValues;
-                } else if ($factor.is2DArray){
-                    currentId.parameters.get(0).array2DValues = $factor.array2DValues;
-                }
-
-                if(currentId.parameters.size() >= 1){
-                    emit($factor.code + ", ", writeTo);
-                    $code += $factor.code + " ,";
-                } else {
-                    emit($factor.code , writeTo);
-                    $code += $factor.code;
-                }
-            } else {
-                error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
-            }
-        } else {
+    ( p=expr // Allows expressions like 'mid + 1'
+      {
+        // If there are no parameters expected, report it
+        if (currentId.parameters == null || currentId.parameters.size() == 0) {
             error($DNT, "There are no parameters for function '" + $DNT.getText() + "'");
-        }
+        } else {
+            // check first parameter
+            if (paramCount < currentId.parameters.size()) {
+                Identifier inputPar = currentId.parameters.get(paramCount);
+                if ($p.type.equals(inputPar.type)) {
+                    // assign passed-in values to the parameter slot
+                    inputPar.value = $p.value;
+                    inputPar.content = $p.content;
+                    inputPar.type = $p.type;
+                    inputPar.hasKnown = $p.hasKnownValue;
+                    inputPar.isArray = $p.isArray;
+                    inputPar.is2DArray = $p.is2DArray;
+                    if ($p.isArray) inputPar.arrayValues = $p.arrayValues;
+                    if ($p.is2DArray) inputPar.array2DValues = $p.array2DValues;
 
-        paramCount ++; //inc param count
-        
-    }
-    (CMM factor
-    {
-        if((currentId !=null) && (currentId.parameters.size() > paramCount)){
-            Identifier inputPar = currentId.parameters.get(paramCount);
-            //check param
-            if($factor.type.equals(inputPar.type)){
-                //System.out.println("DEBUG: parameter success");
-                currentId.parameters.get(paramCount).value = $factor.value;
-                currentId.parameters.get(paramCount).content = $factor.content;
-                currentId.parameters.get(paramCount).type = $factor.type;
-                currentId.parameters.get(paramCount).hasKnown = $factor.hasKnownValue;
-                currentId.parameters.get(paramCount).isFunction = false;
-                currentId.parameters.get(paramCount).isImplemented = false;
-                currentId.parameters.get(paramCount).isArray = $factor.isArray;
-                currentId.parameters.get(paramCount).is2DArray = $factor.is2DArray;
-
-                if($factor.isArray){
-                    currentId.parameters.get(paramCount).arrayValues = $factor.arrayValues;
-                } else if ($factor.is2DArray){
-                    currentId.parameters.get(paramCount).array2DValues = $factor.array2DValues;
+                    // emit correct formatting
+                    if (currentId.parameters.size() > 1) {
+                        emit($p.code + ", ", writeTo);
+                        $code += $p.code + " ,";
+                    } else {
+                        emit($p.code , writeTo);
+                        $code += $p.code;
+                    }
+                } else {
+                    error($p.start, "The input parameter type '" + $p.type + "' is not the same as parameter type '" + inputPar.type + "'");
                 }
-
-                
-                
             } else {
-                error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
+                error($DNT, "There are no parameters for function '" + $DNT.getText() + "'");
             }
-        } else {
-            error($DNT, "There are no additional parameters for function '" + $DNT.getText() + "'");
         }
-
         paramCount ++;
-        if(paramCount < currentId.parameters.size()){
-            emit($factor.code + ", ", writeTo);
-            $code += $factor.code + " ,";
-        } else {
-            emit($factor.code , writeTo);
-            $code += $factor.code;
-        }
+      }
+      ( ',' p=expr // Allows subsequent expressions
+        {
+            if (paramCount < currentId.parameters.size()) {
+                Identifier inputPar = currentId.parameters.get(paramCount);
+                if ($p.type.equals(inputPar.type)) {
+                    inputPar.value = $p.value;
+                    inputPar.content = $p.content;
+                    inputPar.type = $p.type;
+                    inputPar.hasKnown = $p.hasKnownValue;
+                    inputPar.isArray = $p.isArray;
+                    inputPar.is2DArray = $p.is2DArray;
+                    if ($p.isArray) inputPar.arrayValues = $p.arrayValues;
+                    if ($p.is2DArray) inputPar.array2DValues = $p.array2DValues;
+                } else {
+                    error($p.start, "The input parameter type '" + $p.type + "' is not the same as parameter type '" + inputPar.type + "'");
+                }
+            } else {
+                error($DNT, "There are no additional parameters for function '" + $DNT.getText() + "'");
+            }
 
-    }
-    )*)? ')'
+            paramCount ++;
+            if (paramCount < currentId.parameters.size()) {
+                emit($p.code + ", ", writeTo);
+                $code += $p.code + " ,";
+            } else {
+                emit($p.code , writeTo);
+                $code += $p.code;
+            }
+        }
+      )*
+    )? ')'
     {
-        if(paramCount < currentId.parameters.size()){
+        
+        if (paramCount < currentId.parameters.size()){
             error($DNT, "Function is missing parameters.");
         } else if (paramCount > currentId.parameters.size()){
             error($DNT, "Function has excessive parameters.");
         }
 
-        //sets value, should be whatever is returned into the function DNT
+        // set return values from the function entry (dummy or real)
         $value = currentId.value;
-        $type = currentId.type;
+        $type = currentId.type != null ? currentId.type : "null";
         $content = currentId.content;
         $hasKnownValue = currentId.hasKnown;
         $code += ")";
-        emit( ");\n", writeTo);
-
+        emit(");\n", writeTo);
     }
-    ; 
-
+    ;
 functDefine: KW_FNCTN d=dataType a=DNT 
     {
         Identifier function = new Identifier();
@@ -1319,6 +1264,14 @@ functDefine: KW_FNCTN d=dataType a=DNT
         firstP.hasKnown = false;
         firstP.hasBeenUsed = false;
 
+        
+        if ($dt.type.endsWith("[]")) {
+            firstP.isArray = true;
+        }
+        if ($dt.type.endsWith("[][]")) {
+            firstP.is2DArray = true;
+        }
+        
         //add to list
         scopeStack.peek().table.get($a.getText()).parameters.add(firstP);
     }
@@ -1331,11 +1284,19 @@ functDefine: KW_FNCTN d=dataType a=DNT
         nextP.hasKnown = false;
         nextP.hasBeenUsed = false;
 
+       
+        if ($dt2.type.endsWith("[]")) {
+            nextP.isArray = true;
+        }
+        if ($dt2.type.endsWith("[][]")) {
+            nextP.is2DArray = true;
+        }
+
         //add to list
         scopeStack.peek().table.get($a.getText()).parameters.add(nextP);
     }
     )*)? ')' 
-     SCOLN;
+    SCOLN;
 
 dataType returns [String type]:  
     a=primitiveDT { $type = $a.type; }
@@ -1351,3 +1312,74 @@ primitiveDT returns [String type]:
 arrayDT returns [String type]: 
     primitiveDT L_SQBR R_SQBR { $type = $primitiveDT.type + "[]"; }
     | primitiveDT L_SQBR R_SQBR L_SQBR R_SQBR { $type = $primitiveDT.type + "[][]"; };
+arrayAccess returns [
+    boolean hasKnownValue,
+    String type,
+    float value,
+    String content,
+    boolean isArray,
+    boolean is2DArray,
+    List<Object> arrayValues,
+    List<List<Object>> array2DValues,
+    String code,
+    String arrayName,
+    Token arrayCtx,
+    String indexCode
+]:
+    id=DNT L_SQBR e1=expr R_SQBR                 // 1D (e1 is the index)
+    {
+        // Set context fields
+        $arrayName = $id.getText();
+        $arrayCtx = $id; // FIXED: Removed illegal .start property
+        $indexCode = $e1.code;
+        used.add($arrayName);
+        
+        Identifier currId = null;
+        for(int i = scopeStack.size()-1; i >= 0; i--){
+            currId = scopeStack.get(i).table.get($arrayName);
+            if(currId != null) break;
+        }
+
+       
+        if (currId == null) {
+            error($id, "Array '" + $arrayName + "' used before declaration.");
+            $type = "null"; // Default safe type
+        } else if (!currId.isArray) {
+            error($id, "'" + $arrayName + "' is not a 1D array.");
+            $type = "null"; // Default safe type
+        } else {
+            $type = currId.type.substring(0, currId.type.length() - 2); 
+        }
+        
+        // Code Generation
+        $code = $arrayName + "[" + $e1.code + "]";
+        $hasKnownValue = false;
+    }
+| id=DNT L_SQBR e2=expr R_SQBR L_SQBR e3=expr R_SQBR    // 2D (e2, e3 are indices)
+    {
+        // Set context fields
+        $arrayName = $id.getText();
+        $arrayCtx = $id; // FIXED: Removed illegal .start property
+        $indexCode = $e2.code + "][" + $e3.code; // Not strictly indexCode, but for internal use
+        used.add($arrayName);
+        
+        Identifier currId = null;
+        for(int i = scopeStack.size()-1; i >= 0; i--){
+            currId = scopeStack.get(i).table.get($arrayName);
+            if(currId != null) break;
+        }
+
+        if (currId == null) {
+            error($id, "Array '" + $arrayName + "' used before declaration.");
+            $type = "null"; 
+        } else if (!currId.is2DArray) {
+            error($id, "'" + $arrayName + "' is not a 2D array.");
+            $type = "null"; 
+        } else {
+            $type = currId.type.substring(0, currId.type.length() - 4); 
+        }
+        
+        $code = $arrayName + "[" + $e2.code + "][" + $e3.code + "]";
+        $hasKnownValue = false;
+    }
+;
