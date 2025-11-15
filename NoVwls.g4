@@ -15,7 +15,9 @@ grammar NoVwls;
 
         //function
         boolean isFunction = false; //if DNT is a function
+        boolean isImplemented = false; //if function has been defined
         List<Identifier> parameters = new ArrayList<>();
+        StringBuilder storeFunct = new StringBuilder();
         
         List<Object> arrayValues = new ArrayList<>();
         List<List<Object>> array2DValues = new ArrayList<>();
@@ -60,20 +62,86 @@ grammar NoVwls;
 
     //code gen
     StringBuilder sb = new StringBuilder(); // Stores the generated program
-    void emit(String s) { sb.append(s); }   // Short-hand for adding to the program
+    Identifier writeTo = null;
+    void emit(String s, Identifier funct) { // Short-hand for adding to the program
+        if(funct == null){
+            sb.append(s); 
+        } else {
+            funct.storeFunct.append(s);
+        }
+    }   
 
     // Emit the preamble material for our program
     void openProgram() {
-        emit("import java.util.*;\n");
-        emit("public class NoVwlsProgram {\n");
-        emit("  public static void main(String[] args) throws Exception {\n");
-        emit("    Scanner in = new Scanner(System.in);\n");
+        emit("import java.util.*;\n", null);
+        emit("public class NoVwlsProgram {\n", null);
+        emit("  public static void main(String[] args) throws Exception {\n", null);
+        emit("    Scanner in = new Scanner(System.in);\n", null);
     }
 
     // Emit the postamble material for our program
     void closeProgram() {
-        emit("  }\n");
-        emit("}\n");
+        emit(" in.close();\n", null);
+        emit("  }\n", null);
+
+        //export functions **dont forget to check function definition **
+        for (Identifier object : mainTable.table.values()) {
+        
+            if(object.isFunction){
+                //type 
+                String type = object.type;
+                if(type.equals("strng")){
+                    type = "String ";
+                } else if (type.equals("nt")){
+                    type = "int ";
+                } else if (type.equals("flt")){
+                    type = "double ";
+                } else if (type.equals("bl")){
+                    type = "boolean ";
+                } else if (type.equals("chr")){
+                    type = "char ";
+                }
+
+                //establish function and parameters
+                emit("public static " + type + " " + object.id + "( " , null);
+               
+                if(object.parameters != null){
+                    for(int p = 0; p < object.parameters.size(); p++){
+                        Identifier parameter = object.parameters.get(p);
+
+                        //type 
+                        String ptype = parameter.type;
+                        if(ptype.equals("strng")){
+                            ptype = "String ";
+                        } else if (ptype.equals("nt")){
+                            ptype = "int ";
+                        } else if (ptype.equals("flt")){
+                            ptype = "double ";
+                        } else if (ptype.equals("bl")){
+                            ptype = "boolean ";
+                        } else if (ptype.equals("chr")){
+                            ptype = "char ";
+                        }
+                        emit( ptype + " " + parameter.id, null);
+                        if((p+1) != object.parameters.size()){
+                            emit( ", ", null);
+                        }
+                    }
+                }
+                emit(" ) { \n", null);
+
+                //open scanner
+                emit(" Scanner in = new Scanner(System.in);\n", null);
+
+                //emit content
+                emit(object.storeFunct.toString(), null);
+
+                //finish
+                emit("}\n", null);
+            }
+        }
+
+        emit("}\n", null);
     }
 
     // Declare LHS if first-time assignment; otherwise plain assignment.
@@ -90,7 +158,7 @@ grammar NoVwls;
             type = "char ";
         }
 
-        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n");
+        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n", writeTo);
     }
 
     // Write the generated Java to file.
@@ -144,8 +212,8 @@ TMS : '*' ;
 MOD : '%' ;
 LSSTHN : '<' ;
 GRTRTHN : '>' ;
-LSSTHNREQL : '=<' ;
-GRTRTHNREQL : '=>' ;
+LSSTHNREQL : '<=' ;
+GRTRTHNREQL : '>=' ;
 EQL : '==' ;
 NTEQL : '!=' ;
 SCOLN : ';';
@@ -179,30 +247,41 @@ program :
         }
     } ; 
 
-stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | breakStmt | functCall SCOLN | comment;
+stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | breakStmt | functCall SCOLN | functDefine | comment;
 
 blockStmt : '{' { scopeStack.push(new SymbolTable()); } (stmt)* '}' { scopeStack.pop(); } ;
 
 assignStmt : (dt=dataType)? DNT    
     {
+        //taking in id, find if it exists
         currLHS = $DNT.getText();
-        preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
+
+        Identifier currId = null;
+        for(int i = scopeStack.size()-1; i >= 0; i--){
+            preexistingLHS = scopeStack.get(i).table.containsKey(currLHS);
+            if(preexistingLHS != false){
+                currId = scopeStack.get(i).table.get(currLHS);
+                break;
+            }
+        }
+        //preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
 
     }
     SSGN rhs {
+        //make id
         assigned.add(currLHS);
         Identifier newId = new Identifier();
         newId.id = currLHS;
 
         if(!preexistingLHS){ 
-            if($dt.type == null){  // FIXED: Check if dt is null, not dt.type
+            if($dt.type == null){ 
                 error($DNT, "data type not specified for '" + currLHS + "'");
                 newId.type = "null";
             } else {
                 newId.type = $dt.type; 
             }
         } else {
-            newId.type = scopeStack.peek().table.get(currLHS).type;
+            newId.type = currId.type;
         }
 
         boolean errorFlag = false;
@@ -211,7 +290,7 @@ assignStmt : (dt=dataType)? DNT
             // System.out.println("The current DNT's type is " + mainTable.table.get(currLHS).type);
 
             //type check 
-            if(!($rhs.type.equals(scopeStack.peek().table.get(currLHS).type))){
+            if(!($rhs.type.equals(currId.type))){
                 error($DNT, "type mismatch for " + currLHS + "'");
                 errorFlag = true;
             }
@@ -228,19 +307,16 @@ assignStmt : (dt=dataType)? DNT
                 errorFlag = true;
             }
         }
-        if(!errorFlag && $rhs.hasKnownValue){
+        if(!errorFlag){
             newId.value = $rhs.value;
             newId.content = $rhs.content;
-            newId.hasKnown = true;
+            newId.hasKnown = $rhs.hasKnownValue;
             newId.isArray = $rhs.isArray;
             newId.is2DArray = $rhs.is2DArray;
             newId.arrayValues = $rhs.arrayValues;
             newId.array2DValues = $rhs.array2DValues;
 
-    
-        } else {
-            newId.hasKnown = false;
-        }
+        } 
         
         if (preexistingLHS) {
                 // Just a new assignment to an existing variable
@@ -312,9 +388,9 @@ rhs returns [boolean hasKnownValue, String type, float value, String content, bo
     | KW_SCN_STRNG
         {
             $code = "in.nextLine()";
-            String input = scan.nextLine();
+            //String input = scan.nextLine();
             $hasKnownValue = true;
-            $content = "\"" + input + "\"";
+            //$content = "\"" + input + "\"";
             $type = "strng";
             $isArray = false;
             $is2DArray = false;
@@ -322,10 +398,8 @@ rhs returns [boolean hasKnownValue, String type, float value, String content, bo
     | KW_SCN_CHR
         {
             $code = "in.next().charAt(0)";
-            String input = scan.next();
-            input = String.valueOf(input.charAt(0));
+            //input = String.valueOf(input.charAt(0));
             $hasKnownValue = true;
-            $content = "\'" + input + "\'";
             $type = "chr";
             $isArray = false;
             $is2DArray = false;
@@ -381,22 +455,22 @@ arrayElement returns [boolean hasKnownValue, Object elementValue, String element
 
 printStmt : KW_PRNT '(' first=printExpr 
     {
-        emit("    System.out.print(" + $first.code  + ");\n");
+        emit("    System.out.print(" + $first.code  + ");\n", writeTo);
     }
     (CMM more=printExpr
     {
-        emit("    System.out.print(" + $more.code  + ");\n");
+        emit("    System.out.print(" + $more.code  + ");\n", writeTo);
     }
     
     )* ')' SCOLN 
     { 
-        System.out.print("\n"); 
-        emit("    System.out.println(" + ");\n");
+        //System.out.print("\n"); 
+        emit("    System.out.println(" + ");\n", writeTo);
     } ;
 
 printExpr returns[String code]: expr 
     { 
-        //emit("    System.out.print(" + $expr.code  + ");\n");
+        //emit("    System.out.print(" + $expr.code  + ");\n", writeTo);
         $code = $expr.code;
 
         if($expr.type == null){
@@ -404,7 +478,7 @@ printExpr returns[String code]: expr
         } else if(($expr.type.equals("strng") || $expr.type.equals("chr")) && $expr.content != null){
             String printStr = $expr.content;
             printStr = printStr.substring(1, printStr.length() - 1);
-            System.out.print("DEBUG" + printStr);
+            //System.out.print("DEBUG" + printStr);
         } else if ($expr.isArray) {
             System.out.print("[");
             if ($expr.arrayValues != null) {
@@ -467,12 +541,12 @@ printExpr returns[String code]: expr
             System.out.print("]");
         } else {
             if($expr.type.equals("flt")){
-                System.out.print("DEBUG" + $expr.value);
+                //System.out.print("DEBUG" + $expr.value);
             } else if($expr.type.equals("bl")){
-                System.out.print("DEBUG" + ($expr.value == 1.0f ? "true" : "false"));
+                //System.out.print("DEBUG" + ($expr.value == 1.0f ? "true" : "false"));
             } else {
                 int printval = (int)(Math.abs($expr.value));
-                System.out.print("DEBUG" + printval);
+                //System.out.print("DEBUG" + printval);
             }
         }
     };
@@ -484,14 +558,23 @@ compareStmt : KW_F '(' comparison ')'
         // } else { //if false
         //     emit("if (false) {\n");
         // }
-         emit("if (" + $comparison.code + ") {\n");
+         emit("if (" + $comparison.code + ") {\n", writeTo);
         
     }
      blockStmt 
     {
-        emit("}\n");
+        emit("}\n", writeTo);
     }
-    elseC? ; 
+    (KW_LS
+    {
+        emit("else {\n", writeTo);
+    }
+        blockStmt 
+    {
+        emit("}\n", writeTo);
+    }
+    )* 
+    ; 
 
 functStmt : KW_FNCTN d=dataType a=DNT 
     {
@@ -499,14 +582,28 @@ functStmt : KW_FNCTN d=dataType a=DNT
         function.id = $a.getText();
         function.type = $d.type;
         function.isFunction = true;
+        function.isImplemented = true;
         function.hasBeenUsed = false;
         function.hasKnown = true;
         
-        //store funct
-        scopeStack.peek().table.put(function.id, function);
+        Identifier currentId = null;
+        for(int i = scopeStack.size()-1; i >= 0; i--){
+            currentId = scopeStack.get(i).table.get($a.getText());
+            if(currentId != null) break;
+        }
+        if(currentId != null && currentId.isImplemented){
+            error($a , "function '" + $a.getText() + "' is already defined");
+        } else if(currentId != null && !currentId.isImplemented){
+            //check to make sure everything matches
+            if(currentId.type != function.type){
+                error($a , "function '" + $a.getText() + "' definition does not match declaration");
+            } else if (currentId.isFunction != function.isFunction){
+                error($a , "function '" + $a.getText() + "' definition does not match declaration");
+            }
+        }
+        
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
-
     }
     '(' (dt=dataType b=DNT 
     {
@@ -518,7 +615,20 @@ functStmt : KW_FNCTN d=dataType a=DNT
         firstP.hasBeenUsed = false;
 
         //add to list
-        scopeStack.peek().table.get($a.getText()).parameters.add(firstP);
+        function.parameters.add(firstP);
+        
+
+        //check if non implemented funct has same parameters
+        if(currentId != null && !currentId.isImplemented){
+            if(currentId.parameters.size() > 0){
+                //check dt and parameter name
+                if(!currentId.parameters.get(0).type.equals(firstP.type)){
+                    error($b , "function '" + $a.getText() + "' parameter type does not match declaration");
+                } else if(!currentId.parameters.get(0).id.equals(firstP.id)){
+                    error($b , "function '" + $a.getText() + "' parameter ID does not match declaration");
+                }
+            }
+        }
     }
     (CMM dt2=dataType c=DNT
     {
@@ -530,10 +640,40 @@ functStmt : KW_FNCTN d=dataType a=DNT
         nextP.hasBeenUsed = false;
 
         //add to list
-        scopeStack.peek().table.get($a.getText()).parameters.add(nextP);
+        function.parameters.add(nextP);
     }
     )*)? ')' '{'
     {
+        //System.out.println("DEBUG: defining function " + function.id);
+        //check parameters
+        if(currentId != null && !currentId.isImplemented){
+            System.out.println("Here");
+            if(currentId.parameters.size() != function.parameters.size()){
+                error($a , "function '" + $a.getText() + "' parameter count does not match declaration");
+            }
+            System.out.println("Here 2");
+            for(int p = 0; p < function.parameters.size(); p++){
+                Identifier paramCheck = currentId.parameters.get(p);
+                Identifier paramFunct = function.parameters.get(p);
+                if(!paramCheck.type.equals(paramFunct.type)){
+                    error($a , "function '" + $a.getText() + "' parameter type does not match declaration");
+                } else if(!paramCheck.id.equals(paramFunct.id)){
+                    error($a , "function '" + $a.getText() + "' parameter ID does not match declaration");
+                }
+            }
+            System.out.println("Here 3");
+        }
+
+        //store funct
+        if(currentId != null && !currentId.isImplemented){
+            function = currentId;
+        } else {  
+            scopeStack.peek().table.put(function.id, function);
+            mainTable.table.put(function.id, function);
+        }
+
+        //change string builder
+        writeTo = function;
         
         //copy of funct's values for scope
         Identifier tempFunct = scopeStack.peek().table.get($a.getText());
@@ -549,7 +689,7 @@ functStmt : KW_FNCTN d=dataType a=DNT
         //add items to scope
         if(function.parameters.size() > 0){
             Identifier currId;
-            for(int curr = 0; curr < function.parameters.size()-1; curr++){
+            for(int curr = 0; curr < function.parameters.size(); curr++){
                 currId = function.parameters.get(curr);
                 scopeStack.peek().table.put(currId.id, currId);
             }
@@ -560,6 +700,7 @@ functStmt : KW_FNCTN d=dataType a=DNT
     stmt* KW_RTN factor SCOLN '}'
     {
         //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
+        String returnVal = "String ";
         
         //attach funct value 
         if(!($d.type.equals($factor.type))){
@@ -571,12 +712,15 @@ functStmt : KW_FNCTN d=dataType a=DNT
             } else {
                 scopeStack.peek().table.get($a.getText()).value = $factor.value;
             }
-            
+            emit(" in.close();\n", writeTo);
+            emit("return " + $factor.code + "; \n", writeTo);  
         }
 
         //end scope
         scopeStack.pop();
-        //System.out.println("DEBUG: scope deleted");
+        
+        //reset string builder 
+        writeTo = null;
 
         //clear list
         //scopeStack.peek().table.get($a.getText()).parameters = new ArrayList<>();
@@ -589,64 +733,64 @@ loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
 whileLoop : KW_WHL 
     L_PRNTH 
     {
-        emit("while(");
+        emit("while(", writeTo);
     }
     comparison
     {
         //replace with string of comparison
         //if($comparison.value > 0){ //if true
-        //    emit("true");
+        //    emit("true", writeTo);
         //} else {
-        //    emit("false");
+        //    emit("false", writeTo);
         //}
-        emit($comparison.code);
+        emit($comparison.code, writeTo);
     }
      R_PRNTH 
      {
-        emit("){");
+        emit("){", writeTo);
      }
     blockStmt
-        {emit("}");}
+        {emit("}", writeTo);}
     ;
 
 // For loop - FIXED structure
 forLoop : KW_FR 
     L_PRNTH
     {
-        emit("for(");
+        emit("for(", writeTo);
     } 
         (assignStmt | SCOLN)    // initialization
         comparison SCOLN         // condition 
         {
-            emit($comparison.code + ";");
+            emit($comparison.code + ";", writeTo);
         } 
         (forLoopInc)?      // increment
-    R_PRNTH {emit(")");}
+    R_PRNTH {emit(")", writeTo);}
     blockStmt
     ;
 
 // Do-While loop  
-doWhileLoop : KW_D {emit("do{}");}
+doWhileLoop : KW_D {emit("do{}", writeTo);}
     blockStmt
-    KW_WHL L_PRNTH comparison R_PRNTH SCOLN {emit("}while("+ $comparison.code + ")");}
+    KW_WHL L_PRNTH comparison R_PRNTH SCOLN {emit("}while("+ $comparison.code + ")", writeTo);}
     ;
 
 // Break statement
 breakStmt : KW_BRK SCOLN 
     {
-        emit("break;");
+        emit("break;", writeTo);
     }
     ;
 
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
-elseC : (KW_LS blockStmt) | KW_LS blockStmt elseC; 
+elseC : KW_LS blockStmt; 
 
 // For loop increment options
 forLoopInc : 
     assignStmt     // x = x + 1
-    | DNT INC  {emit($DNT.getText()+"++");}              // x++
-    | DNT DCR  {emit($DNT.getText()+"--");}             // x--
+    | DNT INC SCOLN  {emit("++", writeTo);}              // x++
+    | DNT DCR SCOLN  {emit("--", writeTo);}             // x--
     ;
 
 expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
@@ -715,11 +859,7 @@ comparisonExpr returns [boolean hasKnownValue, String type, float value, String 
             $code = "(" + $code + $op.getText() + $b.code + ")"; 
         } else {
             $hasKnownValue = false;
-            if ($a.type.equals("flt") || $b.type.equals("flt")) {
-                $type = "flt";
-            } else {
-                $type = "nt";
-            }
+            $type = "bl";
             $code = "(" + $code + $op.getText() + $b.code + ")";  
         }
     })*;
@@ -874,7 +1014,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
                 $type = "null";
             } else {
                 currentId.hasBeenUsed = true;
-                $hasKnownValue = currentId.hasKnown;
+                $hasKnownValue = false;
                 $value = currentId.value;
                 $type = currentId.type;
                 $content = currentId.content;
@@ -915,21 +1055,19 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
         }
     | functCall
     {
-         if ($functCall.hasKnownValue) {
-            $hasKnownValue = true;
-            $value = $functCall.value;
-            $type = $functCall.type;
-            $content = $functCall.content;
-            $isArray = false;
-            $is2DArray = false;
-            if($functCall.type.equals("strng") || $functCall.type.equals("chr")){
-                $code = "" + $content;
-            } else $code = "" + $value;
+         
+        $hasKnownValue = $functCall.hasKnownValue;
+        $value = $functCall.value;
+        $type = $functCall.type;
+        $content = $functCall.content;
+        $isArray = false;
+        $is2DArray = false;
+        // if($functCall.type.equals("strng") || $functCall.type.equals("chr")){
+        //     $code = "" + $content;
+        // } else $code = "" + $value;
+        $code = $functCall.code;
 
-        } else {
-            //$code = "(" + $functCall.code + ")";
-            $hasKnownValue = false;
-        }
+        
     };
 
 arrayAccess returns [boolean hasKnownValue, String type, float value, String content]:
@@ -1007,6 +1145,9 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         //check if factor matches type set in function
         //assign if so, error if not
 
+        emit(id + "(", writeTo);
+        $code = id + "(";
+
         //init check for amount params 
         int paramCount = 0;
     }
@@ -1014,22 +1155,31 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
     {
         //test if params
         if((currentId !=null) && (currentId.parameters.size() > 0)){
-            Identifier inputPar = scopeStack.peek().table.get(currentId.id).parameters.get(0);
+            Identifier inputPar = currentId.parameters.get(0);
             //check param
             if($factor.type.equals(inputPar.type)){
                 //System.out.println("DEBUG: parameter success");
-                scopeStack.peek().table.get(currentId.id).parameters.get(0).value = $factor.value;
-                scopeStack.peek().table.get(currentId.id).parameters.get(0).content = $factor.content;
-                scopeStack.peek().table.get(currentId.id).parameters.get(0).type = $factor.type;
-                scopeStack.peek().table.get(currentId.id).parameters.get(0).hasKnown = $factor.hasKnownValue;
-                scopeStack.peek().table.get(currentId.id).parameters.get(0).isFunction = false;
-                scopeStack.peek().table.get(currentId.id).parameters.get(0).isArray = $factor.isArray;
-                scopeStack.peek().table.get(currentId.id).parameters.get(0).is2DArray = $factor.is2DArray;
+                currentId.parameters.get(0).value = $factor.value;
+                currentId.parameters.get(0).content = $factor.content;
+                currentId.parameters.get(0).type = $factor.type;
+                currentId.parameters.get(0).hasKnown = $factor.hasKnownValue;
+                currentId.parameters.get(0).isFunction = false;
+                currentId.parameters.get(0).isImplemented = false;
+                currentId.parameters.get(0).isArray = $factor.isArray;
+                currentId.parameters.get(0).is2DArray = $factor.is2DArray;
 
                 if($factor.isArray){
-                    scopeStack.peek().table.get(currentId.id).parameters.get(0).arrayValues = $factor.arrayValues;
+                    currentId.parameters.get(0).arrayValues = $factor.arrayValues;
                 } else if ($factor.is2DArray){
-                    scopeStack.peek().table.get(currentId.id).parameters.get(0).array2DValues = $factor.array2DValues;
+                    currentId.parameters.get(0).array2DValues = $factor.array2DValues;
+                }
+
+                if(currentId.parameters.size() >= 1){
+                    emit($factor.code + ", ", writeTo);
+                    $code += $factor.code + " ,";
+                } else {
+                    emit($factor.code , writeTo);
+                    $code += $factor.code;
                 }
             } else {
                 error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
@@ -1044,23 +1194,27 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
     (CMM factor
     {
         if((currentId !=null) && (currentId.parameters.size() > paramCount)){
-            Identifier inputPar = scopeStack.peek().table.get(currentId.id).parameters.get(paramCount);
+            Identifier inputPar = currentId.parameters.get(paramCount);
             //check param
             if($factor.type.equals(inputPar.type)){
                 //System.out.println("DEBUG: parameter success");
-                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).value = $factor.value;
-                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).content = $factor.content;
-                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).type = $factor.type;
-                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).hasKnown = $factor.hasKnownValue;
-                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).isFunction = false;
-                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).isArray = $factor.isArray;
-                scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).is2DArray = $factor.is2DArray;
+                currentId.parameters.get(paramCount).value = $factor.value;
+                currentId.parameters.get(paramCount).content = $factor.content;
+                currentId.parameters.get(paramCount).type = $factor.type;
+                currentId.parameters.get(paramCount).hasKnown = $factor.hasKnownValue;
+                currentId.parameters.get(paramCount).isFunction = false;
+                currentId.parameters.get(paramCount).isImplemented = false;
+                currentId.parameters.get(paramCount).isArray = $factor.isArray;
+                currentId.parameters.get(paramCount).is2DArray = $factor.is2DArray;
 
                 if($factor.isArray){
-                    scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).arrayValues = $factor.arrayValues;
+                    currentId.parameters.get(paramCount).arrayValues = $factor.arrayValues;
                 } else if ($factor.is2DArray){
-                    scopeStack.peek().table.get(currentId.id).parameters.get(paramCount).array2DValues = $factor.array2DValues;
+                    currentId.parameters.get(paramCount).array2DValues = $factor.array2DValues;
                 }
+
+                
+                
             } else {
                 error($factor.start, "The input parameter input type '" + $factor.type +"' is not the same as parameter type '" + inputPar.type + "'");
             }
@@ -1069,6 +1223,13 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         }
 
         paramCount ++;
+        if(paramCount < currentId.parameters.size()){
+            emit($factor.code + ", ", writeTo);
+            $code += $factor.code + " ,";
+        } else {
+            emit($factor.code , writeTo);
+            $code += $factor.code;
+        }
 
     }
     )*)? ')'
@@ -1084,9 +1245,63 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         $type = currentId.type;
         $content = currentId.content;
         $hasKnownValue = currentId.hasKnown;
+        $code += ")";
+        emit( ");\n", writeTo);
 
     }
     ; 
+
+functDefine: KW_FNCTN d=dataType a=DNT 
+    {
+        Identifier function = new Identifier();
+        function.id = $a.getText();
+        function.type = $d.type;
+        function.isFunction = true;
+        function.isImplemented = false;
+        function.hasBeenUsed = false;
+        function.hasKnown = true;
+        
+        Identifier currentId = null;
+        for(int i = scopeStack.size()-1; i >= 0; i--){
+            currentId = scopeStack.get(i).table.get($a.getText());
+            if(currentId != null) break;
+        }
+        if(currentId != null){
+            error($a , "function '" + $a.getText() + "' is already defined");
+        }
+        
+        //store funct
+        scopeStack.peek().table.put(function.id, function);
+        mainTable.table.put(function.id, function);
+
+        //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
+    }
+    '(' (dt=dataType b=DNT 
+    {
+        //store arg
+        Identifier firstP = new Identifier();
+        firstP.type = $dt.type;
+        firstP.id = $b.getText();
+        firstP.hasKnown = false;
+        firstP.hasBeenUsed = false;
+
+        //add to list
+        scopeStack.peek().table.get($a.getText()).parameters.add(firstP);
+    }
+    (CMM dt2=dataType c=DNT
+    {
+        //store arg
+        Identifier nextP = new Identifier();
+        nextP.type = $dt2.type;
+        nextP.id = $c.getText();
+        nextP.hasKnown = false;
+        nextP.hasBeenUsed = false;
+
+        //add to list
+        scopeStack.peek().table.get($a.getText()).parameters.add(nextP);
+    }
+    )*)? ')' 
+     SCOLN;
 
 dataType returns [String type]:  
     a=primitiveDT { $type = $a.type; }
