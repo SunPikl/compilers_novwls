@@ -1,4 +1,4 @@
-Program 5: Recursive Mergesort
+//Program 5: Recursive Mergesort
 Fnctn nt mrge(flt[] A, nt low, nt mid, nt high) { // Must be flt[] A
     nt i ;
     nt j ;
