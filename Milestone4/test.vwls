@@ -53,3 +53,16 @@ whl(x<y){
     //brk;
 } 
 
+//Array testing 
+
+// Declare and initialize an integer array
+nt[] arr = {10, 20, 30};
+
+// Access and print an element
+nt frst = arr[0]; // Get the first element (10)
+prnt("First element: ", frst);
+
+// Change an element
+arr[1] = 99;
+prnt("Second element changed to: ", arr[1]);
+

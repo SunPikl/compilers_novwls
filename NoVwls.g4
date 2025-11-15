@@ -40,6 +40,33 @@ grammar NoVwls;
     boolean preexistingLHS = false;
     Scanner scan = new Scanner(System.in);
 
+    public String mapType(String noVwlsType) {
+        // Check for array notation and remove it temporarily
+        boolean isArray = noVwlsType.endsWith("[]");
+        String baseType = isArray ? noVwlsType.substring(0, noVwlsType.length() - 2) : noVwlsType; 
+        String javaType;
+        
+        switch (baseType) {
+            case "nt": return isArray ? "int[]" : "int";
+            case "flt": return isArray ? "float[]" : "float"; 
+            case "strng": return isArray ? "String[]" : "String";
+            case "chr": return isArray ? "char[]" : "char";
+            case "bl": return isArray ? "boolean[]" : "boolean";
+            default: return noVwlsType; // Return original if not a known type
+        }
+    }
+
+    public String mapDefaultValue(String javaType) {
+        switch (javaType) {
+            case "int": return "0";
+            case "float": return "0.0f";
+            case "char": return "'\\u0000'";
+            case "boolean": return "false";
+            case "String": return "null"; // Object types can be null
+            default: return "null"; // For arrays or other objects
+        }
+    }
+    
     //errors
     void error(Token t, String msg) {
         diagnostics.add("line " + t.getLine() + ":" + t.getCharPositionInLine() + " " + msg);
@@ -65,11 +92,11 @@ grammar NoVwls;
     Identifier writeTo = null;
     void emit(String s, Identifier funct) { // Short-hand for adding to the program
         if(funct == null){
-            sb.append(s); 
+            sb.append(s);  
         } else {
             funct.storeFunct.append(s);
         }
-    }   
+    }    
 
     // Emit the preamble material for our program
     void openProgram() {
@@ -88,40 +115,19 @@ grammar NoVwls;
         for (Identifier object : mainTable.table.values()) {
         
             if(object.isFunction){
-                //type 
-                String type = object.type;
-                if(type.equals("strng")){
-                    type = "String ";
-                } else if (type.equals("nt")){
-                    type = "int ";
-                } else if (type.equals("flt")){
-                    type = "double ";
-                } else if (type.equals("bl")){
-                    type = "boolean ";
-                } else if (type.equals("chr")){
-                    type = "char ";
-                }
-
+                // type - Use mapType 
+                String type = mapType(object.type); 
+                
                 //establish function and parameters
                 emit("public static " + type + " " + object.id + "( " , null);
-               
+                
                 if(object.parameters != null){
                     for(int p = 0; p < object.parameters.size(); p++){
                         Identifier parameter = object.parameters.get(p);
 
-                        //type 
-                        String ptype = parameter.type;
-                        if(ptype.equals("strng")){
-                            ptype = "String ";
-                        } else if (ptype.equals("nt")){
-                            ptype = "int ";
-                        } else if (ptype.equals("flt")){
-                            ptype = "double ";
-                        } else if (ptype.equals("bl")){
-                            ptype = "boolean ";
-                        } else if (ptype.equals("chr")){
-                            ptype = "char ";
-                        }
+                        // type - Use mapType 
+                        String ptype = mapType(parameter.type); 
+                        
                         emit( ptype + " " + parameter.id, null);
                         if((p+1) != object.parameters.size()){
                             emit( ", ", null);
@@ -144,21 +150,12 @@ grammar NoVwls;
         emit("}\n", null);
     }
 
-    // Declare LHS if first-time assignment; otherwise plain assignment.
     void generateAssign(boolean declare, String name, String rhsJavaCode, String type) {
-        if(type.equals("strng")){
-            type = "String ";
-        } else if (type.equals("nt")){
-            type = "int ";
-        } else if (type.equals("flt")){
-            type = "double ";
-        } else if (type.equals("bl")){
-            type = "boolean ";
-        } else if (type.equals("chr")){
-            type = "char ";
-        }
-
-        emit("    " + (declare ? type : " ") + name + " = " + rhsJavaCode + ";\n", writeTo);
+        String javaType = mapType(type);
+        
+        String declarationPrefix = declare ? javaType + " " : " ";
+        
+        emit("    " + declarationPrefix + name + " = " + rhsJavaCode + ";\n", writeTo);
     }
 
     // Write the generated Java to file.
@@ -247,9 +244,42 @@ program :
         }
     } ; 
 
-stmt : blockStmt | assignStmt | printStmt | compareStmt | functStmt | loopStmt | breakStmt | functCall SCOLN | functDefine | comment;
+stmt : blockStmt | assignStmt | declareStmt | arrayAssignStmt | printStmt | compareStmt | functStmt | loopStmt | breakStmt | functCall SCOLN | functDefine | comment | arrayDeclWithSize;
 
 blockStmt : '{' { scopeStack.push(new SymbolTable()); } (stmt)* '}' { scopeStack.pop(); } ;
+
+arrayDeclWithSize : 
+    dt=primitiveDT id=DNT L_SQBR size=additiveExpr R_SQBR SCOLN 
+    {
+        // Symbol Table Registration
+        Identifier arrayId = new Identifier();
+        arrayId.id = $id.getText();
+        arrayId.type = $dt.type + "[]"; // e.g., "nt[]"
+        arrayId.isArray = true;
+        assigned.add($id.getText());
+        scopeStack.peek().table.put(arrayId.id, arrayId);
+        
+        // Code Generation: int[] arr = new int[size];
+        String javaType = mapType($dt.type); 
+        String arrayType = javaType + "[]"; 
+        emit("    " + arrayType + " " + $id.getText() + " = new " + javaType + "[" + $size.code + "];\n", writeTo);
+    }
+;
+
+declareStmt : dt=dataType id=DNT SCOLN 
+    {
+        String javaType = mapType($dt.type);
+        
+        String defaultValue = mapDefaultValue(javaType);
+        
+        emit("    " + javaType + " " + $id.getText() + " = " + defaultValue + ";\n", writeTo);
+
+        Identifier newId = new Identifier();
+        newId.id = $id.getText();
+        newId.type = $dt.type; // Use the NoVwls type
+        scopeStack.peek().table.put(newId.id, newId);
+    }
+    ;
 
 assignStmt : (dt=dataType)? DNT    
     {
@@ -404,6 +434,27 @@ rhs returns [boolean hasKnownValue, String type, float value, String content, bo
             $isArray = false;
             $is2DArray = false;
         };
+arrayAssignStmt : lhs=arrayAccess SSGN rightExpr=rhs SCOLN { 
+    
+    Identifier currId = null;
+    for(int i = scopeStack.size()-1; i >= 0; i--){
+        currId = scopeStack.get(i).table.get($lhs.arrayName); 
+        if(currId != null) break;
+    } 
+
+    if (currId == null) {
+        // FIX: Use $lhs.arrayCtx for the context of the error
+        error($lhs.arrayCtx, "Array '" + $lhs.arrayName + "' used before declaration.");
+    } else if (!currId.isArray) {
+        error($lhs.arrayCtx, "'" + $lhs.arrayName + "' is not an array.");
+    }
+
+    if(currId != null && currId.isArray) {
+        // Code Generation
+        emit("    " + $lhs.arrayName + "[" + $lhs.indexCode + "] = " + $rightExpr.code + ";\n", writeTo);
+    }
+}
+;
 
 arrayLiteral returns [boolean hasKnownValue, String type, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues]:
     L_CRLYB first=arrayElement 
@@ -455,16 +506,15 @@ arrayElement returns [boolean hasKnownValue, Object elementValue, String element
 
 printStmt : KW_PRNT '(' first=printExpr 
     {
-        emit("    System.out.print(" + $first.code  + ");\n", writeTo);
+        emit("    System.out.print(String.valueOf(" + $first.code  + "));\n", writeTo);
     }
     (CMM more=printExpr
     {
-        emit("    System.out.print(" + $more.code  + ");\n", writeTo);
+        emit("    System.out.print(String.valueOf(" + $more.code  + "));\n", writeTo);
     }
     
     )* ')' SCOLN 
     { 
-        //System.out.print("\n"); 
         emit("    System.out.println(" + ");\n", writeTo);
     } ;
 
@@ -962,7 +1012,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
             $type = "flt";
             $isArray = false;
             $is2DArray = false;
-            $code = ""+$value;
+            $code = $FLT.getText() + "f";
         }
     | BL 
         { 
@@ -1033,6 +1083,7 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
             $content = $arrayAccess.content;
             $isArray = false;
             $is2DArray = false;
+            $code = $arrayAccess.code;
         }
     | '(' expr ')'
         { 
@@ -1070,59 +1121,42 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
         
     };
 
-arrayAccess returns [boolean hasKnownValue, String type, float value, String content]:
-    DNT L_SQBR index=expr R_SQBR
-    {
-        String id = $DNT.getText();
-        used.add(id);
-        Identifier currentId = null;
-        for(int i = scopeStack.size()-1; i >= 0; i--){
-            currentId = scopeStack.get(i).table.get(id);
-            if(currentId != null) break;
-        }
+    
+arrayAccess returns [boolean hasKnownValue, String type, float value, String content, String arrayName, String indexCode, String code, Token arrayCtx]: 
+    arrName=DNT L_SQBR index=additiveExpr R_SQBR 
+    { 
+        $hasKnownValue = $index.hasKnownValue && $index.hasKnownValue;
         
-        if (currentId == null) {
-            error($DNT, "array '" + id + "' not found");
-            $hasKnownValue = false;
-            $type = "null";
-        } else if (!currentId.isArray && !currentId.type.endsWith("[]")) {
-            error($DNT, "'" + id + "' is not an array");
-            $hasKnownValue = false;
-            $type = "null";
-        } else if ($index.hasKnownValue && currentId.arrayValues != null) {
-            int idx = (int)$index.value;
-            if (idx >= 0 && idx < currentId.arrayValues.size()) {
-                Object element = currentId.arrayValues.get(idx);
-                if (element instanceof Integer) {
-                    $value = (Integer)element;
-                    $type = "nt";
-                    $hasKnownValue = true;
-                } else if (element instanceof Float) {
-                    $value = (Float)element;
-                    $type = "flt";
-                    $hasKnownValue = true;
-                } else if (element instanceof Boolean) {
-                    $value = (Boolean)element ? 1.0f : 0.0f;
-                    $type = "bl";
-                    $hasKnownValue = true;
-                } else if (element instanceof String) {
-                    $content = (String)element;
-                    $type = element.toString().startsWith("'") ? "chr" : "strng";
-                    $hasKnownValue = true;
-                } else {
-                    $hasKnownValue = false;
-                }
-                
-            } else {
-                error($DNT, "Array index '" + $expr.value + "' is out of bounds.");
-                $hasKnownValue = false;
-                $type = "null";
-            }
+        $arrayName = $arrName.getText();        // String: The array name
+        $indexCode = $index.code;               // String: Code for the index expression
+        $arrayCtx = $arrName;                   // **FIX: Pass the Token object ($arrName is the Token)**
+
+        // --- Semantic Analysis (Type checking/lookup) ---
+        Identifier currId = null;
+        for(int i = scopeStack.size()-1; i >= 0; i--){
+            if(scopeStack.get(i).table.containsKey($arrayName)){ 
+                currId = scopeStack.get(i).table.get($arrayName);
+                break;
+            } 
+        } 
+
+        if (currId == null) {
+            error($arrayCtx, "Array '" + $arrayName + "' used before declaration.");
+            $type = "int";
+        } else if (!currId.isArray && !currId.is2DArray) { 
+            error($arrayCtx, "'" + $arrayName + "' is not an array.");
+            $type = "int";
         } else {
-            $hasKnownValue = false;
-            $type = currentId.type.replace("[]", "");
+            String elementType = currId.type.substring(0, currId.type.length() - 2); 
+            $type = elementType;
+            used.add($arrayName);
         }
-    };
+
+        $code = $arrayName + "[" + $index.code + "]";
+        $value = 0.0f;
+        $content = null;
+    }
+;
 
 functCall returns [boolean hasKnownValue, String type, float value, String content, String code]: 
     DNT '('
