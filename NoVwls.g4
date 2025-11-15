@@ -662,10 +662,17 @@ functStmt : KW_FNCTN d=dataType a=DNT
         firstP.id = $b.getText();
         firstP.hasKnown = false;
         firstP.hasBeenUsed = false;
+        
+        // ADD THIS FIX: Check if the parameter is an array
+        if ($dt.type.endsWith("[]")) {
+            firstP.isArray = true;
+        }
+        if ($dt.type.endsWith("[][]")) {
+            firstP.is2DArray = true;
+        }
 
         //add to list
         function.parameters.add(firstP);
-        
 
         //check if non implemented funct has same parameters
         if(currentId != null && !currentId.isImplemented){
@@ -687,6 +694,14 @@ functStmt : KW_FNCTN d=dataType a=DNT
         nextP.id = $c.getText();
         nextP.hasKnown = false;
         nextP.hasBeenUsed = false;
+
+        // ADD THIS FIX: Check if the parameter is an array
+        if ($dt2.type.endsWith("[]")) {
+            nextP.isArray = true;
+        }
+        if ($dt2.type.endsWith("[][]")) {
+            nextP.is2DArray = true;
+        }
 
         //add to list
         function.parameters.add(nextP);
