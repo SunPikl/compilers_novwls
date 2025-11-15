@@ -374,6 +374,10 @@ rhs returns [boolean hasKnownValue, String type, float value, String content, bo
             $arrayValues = $e.arrayValues;     
             $array2DValues = $e.array2DValues; 
             $code = $e.code;
+
+            if ($type.equals("flt")) {
+            $code = "(float)(" + $code + ")";
+         }
         }
     | arrayLiteral
         {
@@ -663,7 +667,6 @@ functStmt : KW_FNCTN d=dataType a=DNT
         firstP.hasKnown = false;
         firstP.hasBeenUsed = false;
         
-        // ADD THIS FIX: Check if the parameter is an array
         if ($dt.type.endsWith("[]")) {
             firstP.isArray = true;
         }
@@ -1151,10 +1154,10 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
 
         // initialize return fields so downstream code never sees nulls
         $hasKnownValue = currentId.hasKnown;
-        $type = currentId.type != null ? currentId.type : "null";
+       // $type = currentId.type != null ? currentId.type : "null";
         $value = currentId.value;
         $content = currentId.content;
-        emit(id + "(", writeTo);
+        
         $code = id + "(";
 
         // init param counter
@@ -1180,19 +1183,13 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                     if ($p.isArray) inputPar.arrayValues = $p.arrayValues;
                     if ($p.is2DArray) inputPar.array2DValues = $p.array2DValues;
 
-                    // emit correct formatting
-                    if (currentId.parameters.size() > 1) {
-                        emit($p.code + ", ", writeTo);
-                        $code += $p.code + " ,";
-                    } else {
-                        emit($p.code , writeTo);
-                        $code += $p.code;
-                    }
+                    $code += $p.code;
+
                 } else {
                     error($p.start, "The input parameter type '" + $p.type + "' is not the same as parameter type '" + inputPar.type + "'");
                 }
             } else {
-                error($DNT, "There are no parameters for function '" + $DNT.getText() + "'");
+                error($DNT, "Too many parameters for function '" + $DNT.getText() + "'");
             }
         }
         paramCount ++;
@@ -1214,17 +1211,12 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                     error($p.start, "The input parameter type '" + $p.type + "' is not the same as parameter type '" + inputPar.type + "'");
                 }
             } else {
-                error($DNT, "There are no additional parameters for function '" + $DNT.getText() + "'");
+                error($DNT, "Too many parameters for function '" + $DNT.getText() + "'");
             }
 
             paramCount ++;
-            if (paramCount < currentId.parameters.size()) {
-                emit($p.code + ", ", writeTo);
-                $code += $p.code + " ,";
-            } else {
-                emit($p.code , writeTo);
-                $code += $p.code;
-            }
+            
+            $code += ", " + $p.code;
         }
       )*
     )? ')'
@@ -1233,7 +1225,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         if (paramCount < currentId.parameters.size()){
             error($DNT, "Function is missing parameters.");
         } else if (paramCount > currentId.parameters.size()){
-            error($DNT, "Function has excessive parameters.");
+            // Error is handled in the loops above, but keep for defensive coding.
         }
 
         // set return values from the function entry (dummy or real)
@@ -1241,8 +1233,8 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         $type = currentId.type != null ? currentId.type : "null";
         $content = currentId.content;
         $hasKnownValue = currentId.hasKnown;
+        
         $code += ")";
-        emit(");\n", writeTo);
     }
     ;
 functDefine: KW_FNCTN d=dataType a=DNT 
