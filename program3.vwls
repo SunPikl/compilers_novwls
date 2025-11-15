@@ -1,0 +1,27 @@
+// Program 3: Normalize a List (numbers hardcoded in)
+
+nt n = 4;
+flt A[n]; 
+flt B[n]; 
+flt sum = 0.0;
+nt i = 0;
+
+A[0] = 1.0;
+A[1] = 2.0;
+A[2] = 3.0;
+A[3] = 4.0;
+
+whl (i < n) {
+    sum = sum + A[i];
+    i = i + 1;
+}
+
+flt mean = sum / n;
+
+i = 0; 
+prnt("Normalized Output:");
+whl (i < n) {
+    B[i] = A[i] - mean;
+    prnt(B[i]); 
+    i = i + 1;
+}
