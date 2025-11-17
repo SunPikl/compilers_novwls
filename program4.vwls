@@ -27,6 +27,6 @@ nt k = scnNT;
 flt input = x*x + y*y;
 
 flt distance; 
-distance = (float)(sqrt_newton(input, k));
+distance = sqrt_newton(input, k);
 
 prnt("dist=",distance);

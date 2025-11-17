@@ -923,11 +923,11 @@ comparisonExpr returns [boolean hasKnownValue, String type, float value, String 
                 $value = 1;  
             } else $value = 0;  
             $type = "bl";
-            $code = "(" + $code + $op.getText() + $b.code + ")"; 
+            $code = "(" + $a.code + $op.getText() + $b.code + ")"; 
         } else {
             $hasKnownValue = false;
             $type = "bl";
-            $code = "(" + $code + $op.getText() + $b.code + ")";  
+            $code = "(" + $a.code + $op.getText() + $b.code + ")";  
         }
     })*;
 
@@ -961,7 +961,7 @@ additiveExpr returns [boolean hasKnownValue, String type, float value, String co
             } else {
                 $type = "nt";
             }
-            $code = "(" + $code + $op.getText() + $b.code + ")"; 
+            $code = "(" + $a.code + $op.getText() + $b.code + ")"; 
         }
     })*;
 
@@ -1002,7 +1002,7 @@ multiplicativeExpr returns [boolean hasKnownValue, String type, float value, Str
             } else {
                 $type = "nt";
             }
-            $code = "(" + $code + $op.getText() + $b.code + ")"; 
+            $code = "(" + $a.code + $op.getText() + $b.code + ")"; 
         }
     })*;
 
@@ -1105,22 +1105,15 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
         }
     | '(' expr ')'
         { 
-            if ($expr.hasKnownValue) {
-                $hasKnownValue = true;
-                $value = $expr.value;
-                $content = $expr.content;
-                $type = $expr.type;
-                $isArray = $expr.isArray;
-                $is2DArray = $expr.is2DArray;
-                $arrayValues = $expr.arrayValues;
-                $array2DValues = $expr.array2DValues;
-                if($expr.type.equals("strng") || $expr.type.equals("chr")){
-                    $code = "" + $content;
-                } else $code = "" + $value;
-            } else {
-                $hasKnownValue = false;
-                $code = "(" + $expr.code + ")";
-            }
+            $hasKnownValue = $expr.hasKnownValue;
+            $value = $expr.value;
+            $content = $expr.content;
+            $type = $expr.type;
+            $isArray = $expr.isArray;
+            $is2DArray = $expr.is2DArray;
+            $arrayValues = $expr.arrayValues;
+            $array2DValues = $expr.array2DValues;
+            $code = "(" + $expr.code + ")";
         }
     | functCall
         {
