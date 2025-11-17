@@ -1,0 +1,32 @@
+/* Challenge 4: Newton's Method*/
+
+Fnctn flt sqrt_newton(flt x, nt iterations){
+    nt runs = 0;
+    f(x <= 0.0){
+        runs = iterations;
+        prnt("h");
+    }
+    
+    flt temp = x;
+    whl(runs < iterations){
+        temp = 0.5 * (temp + (x/temp));
+        runs = runs + 1;
+    }
+    rtn temp;
+}
+
+prnt("Please input an x value (float): ");
+flt x = scnFLT;
+
+prnt("Please input a y value (float): ");
+flt y = scnFLT;
+
+prnt("Please input how many iterations (integer): ");
+nt k = scnNT;
+
+flt input = x*x + y*y;
+
+flt distance; 
+distance = (float)(sqrt_newton(input, k));
+
+prnt("dist=",distance);

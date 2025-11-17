@@ -1,0 +1,56 @@
+// Program 3: Normalize and Sort a List 
+
+nt n;
+flt A[100];
+flt B[100];
+flt sum = 0.0;
+nt i = 0;
+
+n = scnNT; // Read n
+
+whl (i < n) { // Read A
+    A[i] = scnFLT;
+    i = i + 1;
+}
+
+
+nt j = 0;
+nt k = 0;
+flt temp;
+
+whl (j < n - 1) { 
+    k = 0;
+    whl (k < n - j - 1) { 
+        f (A[k] > A[k+1]) { 
+            // Swap A[k] and A[k+1]
+            temp = A[k];
+            A[k] = A[k+1];
+            A[k+1] = temp;
+        }
+        k = k + 1;
+    }
+    j = j + 1;
+}
+
+
+
+i = 0;
+
+
+whl (i < n) { // Calculate sum
+    sum = sum + A[i];
+    i = i + 1;
+}
+
+flt mean = sum / n;
+
+
+
+i = 0; 
+prnt("Normalized Output:");
+whl (i < n) {
+
+    B[i] = A[i] - mean;
+    prnt(A[i]); // Prints the normalized, sorted list B
+    i = i + 1;
+}
