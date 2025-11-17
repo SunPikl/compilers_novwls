@@ -818,7 +818,7 @@ whileLoop : KW_WHL
      }
     blockStmt
         {emit("}", writeTo);}
-    ;
+    ; 
 
 // For loop - FIXED structure
 forLoop : KW_FR 
