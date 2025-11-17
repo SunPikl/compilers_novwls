@@ -1122,6 +1122,20 @@ factor returns [boolean hasKnownValue, String type, float value, String content,
                 $code = "(" + $expr.code + ")";
             }
         }
+    | functCall
+        {
+            $hasKnownValue = $functCall.hasKnownValue;
+            $value = $functCall.value;
+            $type = $functCall.type;
+            $content = $functCall.content;
+            $isArray = false;
+            $is2DArray = false;
+            // if($functCall.type.equals("strng") || $functCall.type.equals("chr")){
+            //     $code = "" + $content;
+            // } else $code = "" + $value;
+            $code = $functCall.code;
+            
+        }
     ;
 
 functCall returns [boolean hasKnownValue, String type, float value, String content, String code]: 
