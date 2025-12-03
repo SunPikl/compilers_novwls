@@ -87,44 +87,29 @@ grammar NoVwls;
         return numErrors;
     }
 
-    //***code gen***
-    //code storage
-    StringBuilder text_sb = new StringBuilder(); // Stores text segment
+    //code gen
+    StringBuilder sb = new StringBuilder(); // Stores the generated program
     Identifier writeTo = null;
-    StringBuilder data_sb = new StringBuilder(); //data segment
-    int data_count = 0;
+    void emit(String s, Identifier funct) { // Short-hand for adding to the program
+        if(funct == null){
+            sb.append(s);  
+        } else {
+            funct.storeFunct.append(s);
+        }
+    }    
 
-    void emit(StringBuilder sb, String s, boolean newLine) { 
-        sb.append(s);
-        if (newLine) { sb.append("\n"); }
-    }
-    void emit(StringBuilder sb, String s) { emit(sb, s, true); }
-    void data_emit(String s) { emit(data_sb, s); }
-    void text_emit(String s) { emit(text_sb, s); } 
-
-    //make file 
-    final String ASSEMBLY_FILE = "code.s";
-
-    final String CONST_PREFIX = "VAL";
-    final String ID_PREFIX = "IDX";
-    
     // Emit the preamble material for our program
     void openProgram() {
-    data_emit("# =================================");
-    data_emit("# Auto-generated code. Do not edit.");
-    data_emit("# =================================");
-    data_emit("    .data");
-
-    text_emit("    .text");
-    text_emit("main: ");
-  }
+        emit("import java.util.*;\n", null);
+        emit("public class NoVwlsProgram {\n", null);
+        emit("  public static void main(String[] args) throws Exception {\n", null);
+        emit("    Scanner in = new Scanner(System.in);\n", null);
+    }
 
     // Emit the postamble material for our program
     void closeProgram() {
-        text_emit("end:");
-        text_emit("    li    a0, 0");
-        text_emit("    li    a7, 93");
-        text_emit("    ecall");
+        emit(" in.close();\n", null);
+        emit("  }\n", null);
 
         //export functions **dont forget to check function definition **
         for (Identifier object : mainTable.table.values()) {
@@ -134,7 +119,7 @@ grammar NoVwls;
                 String type = mapType(object.type); 
                 
                 //establish function and parameters
-                //emit("public static " + type + " " + object.id + "( " , null);
+                emit("public static " + type + " " + object.id + "( " , null);
                 
                 if(object.parameters != null){
                     for(int p = 0; p < object.parameters.size(); p++){
@@ -143,102 +128,42 @@ grammar NoVwls;
                         // type - Use mapType 
                         String ptype = mapType(parameter.type); 
                         
-                        //emit( ptype + " " + parameter.id, null);
+                        emit( ptype + " " + parameter.id, null);
                         if((p+1) != object.parameters.size()){
-                            //emit( ", ", null);
+                            emit( ", ", null);
                         }
                     }
                 }
-                //emit(" ) { \n", null);
+                emit(" ) { \n", null);
 
                 //open scanner
-                //emit(" Scanner in = new Scanner(System.in);\n", null);
+                emit(" Scanner in = new Scanner(System.in);\n", null);
 
                 //emit content
-                //emit(object.storeFunct.toString(), null);
+                emit(object.storeFunct.toString(), null);
 
                 //finish
-                //emit("}\n", null);
+                emit("}\n", null);
             }
         }
 
+        emit("}\n", null);
     }
 
-    //send values
-    String addDoubleValue(double x) {
-        String label = CONST_PREFIX+data_count;
-        data_count++;
-        data_emit(label + ":    .double " + x);
-        return label;
+    void generateAssign(boolean declare, String name, String rhsJavaCode, String type) {
+        String javaType = mapType(type);
+        
+        String declarationPrefix = declare ? javaType + " " : " ";
+        
+        emit("    " + declarationPrefix + name + " = " + rhsJavaCode + ";\n", writeTo);
     }
 
-    void addSymbolsToData(SymbolTable table) {
-        table.table.forEach((id, symbol) -> {  { 
-            String label = ID_PREFIX + id;
-            data_emit(label + ":    .double 0.0");
-        }});
-    }
-
-    //loading values to register
-    StringBuilder generateDoubleConstant(String register, double value) {
-        StringBuilder code = new StringBuilder();
-        String label = addDoubleValue(value);
-        emit(code, "    la " + "t0," + label); 
-        emit(code, "    fld " + register + ", 0(t0)");
-        return code;
-    }
-
-    StringBuilder generateLoadId(String register, String id) {
-        StringBuilder code = new StringBuilder();
-        String label = ID_PREFIX + id;
-        emit(code, "    la " + "t0," + label); 
-        emit(code, "    fld " + register + ", 0(t0)");
-        System.out.println("DEBUG: load id " + id + " into register " + register);
-        return code;
-    }
-
-    //generate assignments
-    void generateAssign(String name, StringBuilder rhsJavaCode, String register) {
-        // tempRegister is either t0 or t1 (if t0 is taken)
-        String tempRegister = register.equals("t0") ? "t1" : "t0";
-
-        emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
-        emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
-        System.out.println("DEBUG: assign to " + name + " from register " + register);
-    }
-
-    //generate to read
-    void generateReadDouble(StringBuilder code, String register) {
-        emit(code, "    li    a7, 7");  // a7=7 is for reading doubles
-        emit(code, "    ecall");        // invoke the system call
-        if (!register.equals("fa0")) {
-            // Transfer the results over to register from fa0.
-            //    e.g. fmv.d fa1, fa0   fa1 = fa0
-            emit(code, "    fmv.d " + register + ",fa0");
-        }
-    }
-
-    //generate to print
-    void generatePrintDouble(StringBuilder code, String register) {
-        if (!register.equals("fa0")) {
-            // Need to transfer the value in register to fa0
-            //    e.g. fmv.d fa0, fa1   fa0 = fa1
-            emit(code, "    fmv.d fa0," + register);
-        }
-        emit(code, "    li    a7, 3");  // a7=3 is for printing doubles
-        emit(code, "    ecall");        // invoke the system call
-        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-        emit(code, "    ecall");        // invoke the system call
-    }
-
-    /// Write the generated Java to file.
+    // Write the generated Java to file.
     void writeFile() {
-        try (PrintWriter pw = new PrintWriter(ASSEMBLY_FILE, "UTF-8")) {
-            pw.print(data_sb.toString());
-            pw.print(text_sb.toString());
+        try (PrintWriter pw = new PrintWriter("NoVwlsProgram.java", "UTF-8")) {
+            pw.print(sb.toString());
         } catch (Exception e) {
-            System.err.println("error: failed to write to " + ASSEMBLY_FILE + ": " + e.getMessage());
+            System.err.println("error: failed to write NoVwlsProgram.java: " + e.getMessage());
         }
     }
 }
@@ -305,18 +230,13 @@ program :
         scopeStack.push(mainTable);
         openProgram();
     } 
-    (stmt
-    {
-        text_sb.append($stmt.code);
-    }
-    )* EOF 
+    (stmt)* EOF 
     { 
         printDiagnostics(); 
         int numErrors = printDiagnostics();
         if (numErrors == 0) {
             // Successful, so write out the generated code
             closeProgram();
-            addSymbolsToData(mainTable);
             writeFile();
         } else {
             System.err.println(numErrors + " errors detected. Code not generated.");
@@ -324,25 +244,12 @@ program :
         }
     } ; 
 
-stmt returns [StringBuilder code] : 
-    blockStmt { $code = new StringBuilder(); }
-    | assignStmt  { $code = $assignStmt.code; }
-    | declareStmt 
-    | arrayAssignStmt 
-    | printStmt { $code = $printStmt.code; }
-    | compareStmt { $code = new StringBuilder(); }
-    | functStmt 
-    | loopStmt 
-    | breakStmt 
-    | functCall SCOLN 
-    | functDefine 
-    | comment 
-    | arrayDeclWithSize;
+stmt : blockStmt | assignStmt | declareStmt | arrayAssignStmt | printStmt | compareStmt | functStmt | loopStmt | breakStmt | functCall SCOLN | functDefine | comment | arrayDeclWithSize;
 
 blockStmt : '{' { scopeStack.push(new SymbolTable()); } (stmt)* '}' { scopeStack.pop(); } ;
 
 arrayDeclWithSize : 
-    dt=primitiveDT id=DNT L_SQBR size=additiveExpr["fa0"] R_SQBR SCOLN 
+    dt=primitiveDT id=DNT L_SQBR size=additiveExpr R_SQBR SCOLN 
     {
         // Symbol Table Registration
         Identifier arrayId = new Identifier();
@@ -355,7 +262,7 @@ arrayDeclWithSize :
         // Code Generation: int[] arr = new int[size];
         String javaType = mapType($dt.type); 
         String arrayType = javaType + "[]"; 
-        //emit("    " + arrayType + " " + $id.getText() + " = new " + javaType + "[" + $size.code + "];\n", writeTo);
+        emit("    " + arrayType + " " + $id.getText() + " = new " + javaType + "[" + $size.code + "];\n", writeTo);
     }
 ;
 
@@ -365,7 +272,7 @@ declareStmt : dt=dataType id=DNT SCOLN
         
         String defaultValue = mapDefaultValue(javaType);
         
-        //emit("    " + javaType + " " + $id.getText() + " = " + defaultValue + ";\n", writeTo);
+        emit("    " + javaType + " " + $id.getText() + " = " + defaultValue + ";\n", writeTo);
 
         Identifier newId = new Identifier();
         newId.id = $id.getText();
@@ -374,8 +281,7 @@ declareStmt : dt=dataType id=DNT SCOLN
     }
     ;
 
-assignStmt returns [StringBuilder code]: {String register = "fa0";}
-    (dt=dataType)? DNT    
+assignStmt : (dt=dataType)? DNT    
     {
         //taking in id, find if it exists
         currLHS = $DNT.getText();
@@ -391,7 +297,7 @@ assignStmt returns [StringBuilder code]: {String register = "fa0";}
         //preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
 
     }
-    SSGN rhs [register] {
+    SSGN rhs {
         //make id
         assigned.add(currLHS);
         Identifier newId = new Identifier();
@@ -443,24 +349,22 @@ assignStmt returns [StringBuilder code]: {String register = "fa0";}
         } 
         
         if (preexistingLHS) {
-            // Just a new assignment to an existing variable
-            generateAssign(currLHS, $rhs.code, register);
-        } else {
-            // A new variable is being "declared"
-            //Identifier newId = new Identifier(currLHS);
-            mainTable.table.put(newId.id, newId);
-            generateAssign(newId.id, $rhs.code, register);
-        }
-
-        $code = $rhs.code;
+                // Just a new assignment to an existing variable
+                generateAssign(false, currLHS, $rhs.code, $rhs.type);
+            } else {
+                // A new variable is being "declared"
+                //Identifier newId = new Identifier(currLHS);
+                mainTable.table.put(newId.id, newId);
+                generateAssign(true, newId.id, $rhs.code, $rhs.type);
+            }
 
         newId.hasBeenUsed = false;
         scopeStack.peek().table.put(newId.id, newId);
         currLHS = null;
     } SCOLN ;
 
-rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String codes]:
-      e = expr[$register]
+rhs returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]:
+      e = expr
         {$hasKnownValue = $e.hasKnownValue;   
             $type = $e.type;                     
             $value = $e.value;                   
@@ -472,10 +376,8 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
             $code = $e.code;
 
             if ($type.equals("flt")) {
-                //$code = "(float)(" + $code + ")";
-            }
-
-            $code = $e.code;
+            $code = "(float)(" + $code + ")";
+         }
         }
     | arrayLiteral
         {
@@ -489,8 +391,8 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
     | KW_SCN_NTGR
         {
             try{
-                $code = new StringBuilder();
-                //generateReadInt($code, register);
+                $code = "in.nextInt()";
+                //int input = scan.nextInt();
                 $hasKnownValue = false;
                 //$value = input;
                 $type = "nt";
@@ -504,9 +406,7 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
     | KW_SCN_FLT
         {
             try{
-                //$code = "in.nextFloat()";
-                $code = new StringBuilder();
-                generateReadDouble($code, register);
+                $code = "in.nextFloat()";
                 float input = 0.0f;
                 $hasKnownValue = true;
                 $value = input;
@@ -520,9 +420,7 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
         }
     | KW_SCN_STRNG
         {
-            //$code = "in.nextLine()";
-            $code = new StringBuilder();
-            //generateReadString($code, register);
+            $code = "in.nextLine()";
             //String input = scan.nextLine();
             $hasKnownValue = true;
             //$content = "\"" + input + "\"";
@@ -532,15 +430,14 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
         }
     | KW_SCN_CHR
         {
-            //$code = "in.next().charAt(0)";
-            $code = new StringBuilder();
-            //generateReadChar($code, register);
+            $code = "in.next().charAt(0)";
+            //input = String.valueOf(input.charAt(0));
             $hasKnownValue = true;
             $type = "chr";
             $isArray = false;
             $is2DArray = false;
         };
-arrayAssignStmt : lhs=arrayAccess SSGN rightExpr=rhs["fa0"] SCOLN { 
+arrayAssignStmt : lhs=arrayAccess SSGN rightExpr=rhs SCOLN { 
     
     Identifier currId = null;
     for(int i = scopeStack.size()-1; i >= 0; i--){
@@ -557,7 +454,7 @@ arrayAssignStmt : lhs=arrayAccess SSGN rightExpr=rhs["fa0"] SCOLN {
 
     if(currId != null && currId.isArray) {
         // Code Generation
-        //emit("    " + $lhs.arrayName + "[" + $lhs.indexCode + "] = " + $rightExpr.code + ";\n", writeTo);
+        emit("    " + $lhs.arrayName + "[" + $lhs.indexCode + "] = " + $rightExpr.code + ";\n", writeTo);
     }
 }
 ;
@@ -593,7 +490,7 @@ arrayLiteral returns [boolean hasKnownValue, String type, boolean isArray, boole
     })* R_CRLYB;
 
 arrayElement returns [boolean hasKnownValue, Object elementValue, String elementType]:
-    expr["fa0"]
+    expr
     {
         $hasKnownValue = $expr.hasKnownValue;
         $elementType = $expr.type;
@@ -610,33 +507,24 @@ arrayElement returns [boolean hasKnownValue, Object elementValue, String element
         }
     };
 
-printStmt returns [StringBuilder code]: { String register = "fa0"; }
-KW_PRNT '(' first=printExpr 
+printStmt : KW_PRNT '(' first=printExpr 
     {
-        //emit("    System.out.print(String.valueOf(" + $first.code  + "));\n", writeTo);
-        $code = $first.code;  // Start with the code for the expression
-        if($first.type.equals("nt")){
-            //generatePrintInt($code, register);
-        } else if($first.type.equals("flt")){
-            generatePrintDouble($code, register);
-        }
+        emit("    System.out.print(String.valueOf(" + $first.code  + "));\n", writeTo);
     }
     (CMM more=printExpr
     {
-        //emit("    System.out.print(String.valueOf(" + $more.code  + "));\n", writeTo);
+        emit("    System.out.print(String.valueOf(" + $more.code  + "));\n", writeTo);
     }
     
     )* ')' SCOLN 
     { 
-        //emit("    System.out.println(" + ");\n", writeTo);
+        emit("    System.out.println(" + ");\n", writeTo);
     } ;
 
-printExpr returns [StringBuilder code, String type]: { String register = "fa0"; }
-    expr [register]
+printExpr returns[String code]: expr 
     { 
         //emit("    System.out.print(" + $expr.code  + ");\n", writeTo);
         $code = $expr.code;
-        $type = $expr.type;
 
         if($expr.type == null){
             System.err.println("Error: cannot print null types");
@@ -716,27 +604,27 @@ printExpr returns [StringBuilder code, String type]: { String register = "fa0"; 
         }
     };
 
-compareStmt : KW_F '(' comparison["fa0"] ')'
+compareStmt : KW_F '(' comparison ')'
     {
         // if($comparison.value > 0){ //if true
         //     emit("if (true) {\n");
         // } else { //if false
         //     emit("if (false) {\n");
         // }
-         //emit("if (" + $comparison.code + ") {\n", writeTo);
+         emit("if (" + $comparison.code + ") {\n", writeTo);
         
     }
      blockStmt 
     {
-        //emit("}\n", writeTo);
+        emit("}\n", writeTo);
     }
     (KW_LS
     {
-        //emit("else {\n", writeTo);
+        emit("else {\n", writeTo);
     }
         blockStmt 
     {
-        //emit("}\n", writeTo);
+        emit("}\n", writeTo);
     }
     )* 
     ; 
@@ -876,7 +764,7 @@ functStmt : KW_FNCTN d=dataType a=DNT
         
         
     }
-    stmt* KW_RTN factor["fa0"] SCOLN '}'
+    stmt* KW_RTN factor SCOLN '}'
     {
         //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
         String returnVal = "String ";
@@ -891,8 +779,8 @@ functStmt : KW_FNCTN d=dataType a=DNT
             } else {
                 scopeStack.peek().table.get($a.getText()).value = $factor.value;
             }
-            //emit(" in.close();\n", writeTo);
-            //emit("return " + $factor.code + "; \n", writeTo);  
+            emit(" in.close();\n", writeTo);
+            emit("return " + $factor.code + "; \n", writeTo);  
         }
 
         //end scope
@@ -912,9 +800,9 @@ loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
 whileLoop : KW_WHL 
     L_PRNTH 
     {
-        //emit("while(", writeTo);
+        emit("while(", writeTo);
     }
-    comparison["fa0"]
+    comparison
     {
         //replace with string of comparison
         //if($comparison.value > 0){ //if true
@@ -922,52 +810,42 @@ whileLoop : KW_WHL
         //} else {
         //    emit("false", writeTo);
         //}
-        //emit($comparison.code, writeTo);
+        emit($comparison.code, writeTo);
     }
      R_PRNTH 
      {
-        //emit("){", writeTo);
+        emit("){", writeTo);
      }
     blockStmt
-        {
-            //emit("}", writeTo);
-        }
+        {emit("}", writeTo);}
     ; 
 
 // For loop - FIXED structure
 forLoop : KW_FR 
     L_PRNTH
     {
-        //emit("for(", writeTo);
+        emit("for(", writeTo);
     } 
         (assignStmt | SCOLN)    // initialization
-        comparison["fa0"] SCOLN         // condition 
+        comparison SCOLN         // condition 
         {
-            //emit($comparison.code + ";", writeTo);
+            emit($comparison.code + ";", writeTo);
         } 
         (forLoopInc)?      // increment
-    R_PRNTH {
-        //emit("){", writeTo);
-        }
-    blockStmt {
-        //emit("}", writeTo);
-        }
+    R_PRNTH {emit("){", writeTo);}
+    blockStmt {emit("}", writeTo);}
     ;
 
 // Do-While loop  
-doWhileLoop : KW_D {
-        //emit("do{\n", writeTo);
-        }
+doWhileLoop : KW_D {emit("do{\n", writeTo);}
     blockStmt
-    KW_WHL L_PRNTH comparison["fa0"] R_PRNTH SCOLN {
-        //emit("}while("+ $comparison.code + ");\n", writeTo);
-        }
+    KW_WHL L_PRNTH comparison R_PRNTH SCOLN {emit("}while("+ $comparison.code + ");\n", writeTo);}
     ;
 
 // Break statement
 breakStmt : KW_BRK SCOLN 
     {
-        //emit("break;", writeTo);
+        emit("break;", writeTo);
     }
     ;
 
@@ -978,14 +856,12 @@ elseC : KW_LS blockStmt;
 // For loop increment options
 forLoopInc : 
     assignStmt     // x = x + 1
-    | DNT INC  {//emit($DNT.getText()+"++", writeTo);
-                }              // x++
-    | DNT DCR  {//emit($DNT.getText()+"--", writeTo);
-                }             // x--
+    | DNT INC  {emit($DNT.getText()+"++", writeTo);}              // x++
+    | DNT DCR  {emit($DNT.getText()+"--", writeTo);}             // x--
     ;
 
-expr[String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code]: 
-        a=factor [$register]
+expr returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
+        a=factor 
         {
             $hasKnownValue = $a.hasKnownValue;
             $value = $a.value;
@@ -998,7 +874,7 @@ expr[String register] returns [boolean hasKnownValue, String type, float value, 
             $code = $a.code;
             
         }
-    | b=comparisonExpr[$register]
+    | b=comparisonExpr
         {
             $hasKnownValue = $b.hasKnownValue;
             $value = $b.value;
@@ -1008,8 +884,8 @@ expr[String register] returns [boolean hasKnownValue, String type, float value, 
             $code = $b.code;
         };
 
-comparison [String register] returns [boolean hasKnownValue, float value, StringBuilder code] : 
-    a=comparisonExpr [$register]
+comparison returns [boolean hasKnownValue, float value, String code] : 
+    a=comparisonExpr
     {
         if(!($a.type.equals("bl"))){
             System.err.println("Comparison must return boolean");
@@ -1020,124 +896,103 @@ comparison [String register] returns [boolean hasKnownValue, float value, String
         }
     };
 
-comparisonExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code] : 
-    a=additiveExpr[$register] 
+comparisonExpr returns [boolean hasKnownValue, String type, float value, String code] : 
+    a=additiveExpr   
     {  
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
         $code = $a.code; 
-        String nextRegister = ($register.equals("ft0")) ? "ft1" : "ft0";
-
     }  
     (op = (LSSTHN | GRTRTHN | LSSTHNREQL | GRTRTHNREQL | EQL | NTEQL) 
-    b=additiveExpr [nextRegister]
+    b=additiveExpr  
     {  
-        $code.append($b.code);
-
         if ($b.hasKnownValue) {  
             String opType = $op.getText(); 
             if (opType.equals(">") && $a.value > $b.value) {  
                 $value = 1;  
-                emit($code, "    bgt " + $register + "," + $register + "," + nextRegister);
             } else if (opType.equals("<") && $a.value < $b.value) {  
                 $value = 1;  
-                emit($code, "    blt " + $register + "," + $register + "," + nextRegister);
             } else if (opType.equals("==") && $a.value == $b.value) {  
                 $value = 1;  
-                emit($code, "    beq " + $register + "," + $register + "," + nextRegister);
             } else if (opType.equals("<=") && $a.value <= $b.value) {  
                 $value = 1;  
-                emit($code, "    ble " + $register + "," + $register + "," + nextRegister);
             } else if (opType.equals(">=") && $a.value >= $b.value) {  
                 $value = 1;  
-                emit($code, "    bge " + $register + "," + $register + "," + nextRegister);
             } else if (opType.equals("!=") && $a.value != $b.value) {  
-                $value = 1; 
-                emit($code, "    bne " + $register + "," + $register + "," + nextRegister); 
+                $value = 1;  
             } else $value = 0;  
             $type = "bl";
-
-            //$code = "(" + $a.code + $op.getText() + $b.code + ")"; 
+            $code = "(" + $a.code + $op.getText() + $b.code + ")"; 
         } else {
             $hasKnownValue = false;
             $type = "bl";
-            //$code = "(" + $a.code + $op.getText() + $b.code + ")";  
+            $code = "(" + $a.code + $op.getText() + $b.code + ")";  
         }
     })*;
 
-additiveExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code] : 
-    a=multiplicativeExpr [$register]
+additiveExpr returns [boolean hasKnownValue, String type, float value, String code] : 
+    a=multiplicativeExpr
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
         $code = $a.code;
-        String nextRegister = ($register.equals("ft0")) ? "ft1" : "ft0";
     }
-    (op=(PLS | MNS) b=multiplicativeExpr [nextRegister]
+    (op=(PLS | MNS) b=multiplicativeExpr
     {
-        $code.append($b.code);
-        //if ($hasKnownValue && $b.hasKnownValue) {
+        if ($hasKnownValue && $b.hasKnownValue) {
             if ($op.getText().equals("+")) {
                 $value = $value + $b.value;
-                emit($code, "    fadd.d " + $register + "," + $register + "," + nextRegister);
             } else {
                 $value = $value - $b.value;
-                emit($code, "    fsub.d " + $register + "," + $register + "," + nextRegister);
             }
             if ("flt".equals($a.type) || "flt".equals($b.type)) {
                 $type = "flt";
-                //$code = "" + $value;
+                $code = "" + $value;
             } else {
                 $type = "nt";
-                //$code = "" + (int)$value;
+                $code = "" + (int)$value;
             }
-        // } else {
-        //     $hasKnownValue = false;
-        //     if ("flt".equals($a.type) || "flt".equals($b.type)) {
-        //         $type = "flt";
-        //     } else {
-        //         $type = "nt";
-        //     }
-        //     //$code = "(" + $a.code + $op.getText() + $b.code + ")"; 
-        // }
+        } else {
+            $hasKnownValue = false;
+            if ("flt".equals($a.type) || "flt".equals($b.type)) {
+                $type = "flt";
+            } else {
+                $type = "nt";
+            }
+            $code = "(" + $a.code + $op.getText() + $b.code + ")"; 
+        }
     })*;
 
-multiplicativeExpr [String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code]: 
-    a=unaryExpr [$register]
+multiplicativeExpr returns [boolean hasKnownValue, String type, float value, String code]: 
+    a=unaryExpr 
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
         $code = $a.code;
-        String nextRegister = ($register.equals("ft0")) ? "ft1" : "ft0";
     }
-    ( op=( TMS | DVD | MOD) b=unaryExpr [nextRegister]
+    ( op=( TMS | DVD | MOD) b=unaryExpr 
     {
-        $code.append($b.code);
-
         if ($b.hasKnownValue && $op.getText().equals("/") && $b.value == 0) {
             error($op, "division by zero");
             $hasKnownValue = false; 
-            //$code = "Error";
+            $code = "Error";
         } else if ($hasKnownValue && $b.hasKnownValue) {
             if ($op.getText().equals("*")) {
                 $value = $value * $b.value;
-                emit($code, "    fmul.d " + $register + "," + $register + "," + nextRegister);
             } else if ($op.getText().equals("%")){
                 $value = $value % $b.value;
-                emit($code, "    frem.d " + $register + "," + $register + "," + nextRegister);
             } else {
                 $value = $value / $b.value;
-                emit($code, "    fdiv.d " + $register + "," + $register + "," + nextRegister);
             }
             if ("flt".equals($a.type) || "flt".equals($b.type)) {
                 $type = "flt";
-                //$code = "" + $value;
+                $code = "" + $value;
             } else {
                 $type = "nt";
-                //$code = "" + (int)$value;
+                $code = "" + (int)$value;
             }
         } else {
             $hasKnownValue = false;
@@ -1147,39 +1002,27 @@ multiplicativeExpr [String register] returns [boolean hasKnownValue, String type
             } else {
                 $type = "nt";
             }
-            //$code = "(" + $a.code + $op.getText() + $b.code + ")"; 
+            $code = "(" + $a.code + $op.getText() + $b.code + ")"; 
         }
     })*;
 
-unaryExpr [String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code]: 
-    op=('+' | '-' | '!')? a=factor [$register]
+unaryExpr returns [boolean hasKnownValue, String type, float value, String code]: 
+    ('+' | '-' | '!')? a=factor 
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
-
-        try {
-        if($op.getText().equals("-")){
-            emit($code, "    neg " + $register + "," + $register);
-        }
-        } catch (Exception e) {
-            // No unary operator present
-        }
-
         $code = $a.code;
-    }; 
+    };
 
-factor [String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code]: 
+factor returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String code]: 
       NT 
         {   $hasKnownValue = true; 
             $value = Integer.parseInt($NT.getText()); 
             $type = "nt";
             $isArray = false;
             $is2DArray = false;
-            //code = ""+(int)$value;
-            int val = Integer.parseInt($NT.getText());
-            $code = generateDoubleConstant($register, (double) val);
-
+            $code = ""+(int)$value;
         }
     | FLT 
         {   $hasKnownValue = true; 
@@ -1187,9 +1030,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $type = "flt";
             $isArray = false;
             $is2DArray = false;
-            //code = $FLT.getText() + "f";
-            double val = Double.parseDouble($FLT.getText());
-            $code = generateDoubleConstant($register, val);
+            $code = $FLT.getText() + "f";
         }
     | BL 
         { 
@@ -1204,7 +1045,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             } else {
                 $value = Integer.parseInt($BL.getText());
             }
-            //$code = ""+(int)$value;
+            $code = ""+(int)$value;
         }
     | CHR
         {   $hasKnownValue = true; 
@@ -1212,7 +1053,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $type = "chr";
             $isArray = false;
             $is2DArray = false;
-            //$code = ""+$content;
+            $code = ""+$content;
         }
     | STRNG 
         {   $hasKnownValue = true; 
@@ -1220,7 +1061,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $type = "strng";
             $isArray = false;
             $is2DArray = false;
-            //$code = ""+$content;
+            $code = ""+$content;
         }
     | DNT
         {
@@ -1250,7 +1091,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
                 $arrayValues = currentId.arrayValues;
                 $array2DValues = currentId.array2DValues;
             }
-            $code = generateLoadId($register, id);
+            $code = id;
         }
     | arrayAccess
         {
@@ -1260,9 +1101,9 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $content = $arrayAccess.content;
             $isArray = false;
             $is2DArray = false;
-            //$code = $arrayAccess.code;
+            $code = $arrayAccess.code;
         }
-    | '(' expr[$register] ')'
+    | '(' expr ')'
         { 
             $hasKnownValue = $expr.hasKnownValue;
             $value = $expr.value;
@@ -1272,7 +1113,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $is2DArray = $expr.is2DArray;
             $arrayValues = $expr.arrayValues;
             $array2DValues = $expr.array2DValues;
-            $code = $expr.code ;
+            $code = "(" + $expr.code + ")";
         }
     | functCall
         {
@@ -1285,7 +1126,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             // if($functCall.type.equals("strng") || $functCall.type.equals("chr")){
             //     $code = "" + $content;
             // } else $code = "" + $value;
-            //$code = $functCall.code;
+            $code = $functCall.code;
             
         }
     ;
@@ -1324,12 +1165,12 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         $value = currentId.value;
         $content = currentId.content;
         
-        //$code = id + "(";
+        $code = id + "(";
 
         // init param counter
         int paramCount = 0;
     }
-    ( p=expr["fa0"] // Allows expressions like 'mid + 1'
+    ( p=expr // Allows expressions like 'mid + 1'
       {
         // If there are no parameters expected, report it
         if (currentId.parameters == null || currentId.parameters.size() == 0) {
@@ -1349,7 +1190,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                     if ($p.isArray) inputPar.arrayValues = $p.arrayValues;
                     if ($p.is2DArray) inputPar.array2DValues = $p.array2DValues;
 
-                    //$code += $p.code;
+                    $code += $p.code;
 
                 } else {
                     error($p.start, "The input parameter type '" + $p.type + "' is not the same as parameter type '" + inputPar.type + "'");
@@ -1360,7 +1201,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         }
         paramCount ++;
       }
-      ( ',' p=expr["fa0"] // Allows subsequent expressions
+      ( ',' p=expr // Allows subsequent expressions
         {
             if (paramCount < currentId.parameters.size()) {
                 Identifier inputPar = currentId.parameters.get(paramCount);
@@ -1499,12 +1340,12 @@ arrayAccess returns [
     Token arrayCtx,
     String indexCode
 ]:
-    id=DNT L_SQBR e1=expr["fa0"] R_SQBR                 // 1D (e1 is the index)
+    id=DNT L_SQBR e1=expr R_SQBR                 // 1D (e1 is the index)
     {
         // Set context fields
         $arrayName = $id.getText();
         $arrayCtx = $id; // FIXED: Removed illegal .start property
-        //$indexCode = $e1.code;
+        $indexCode = $e1.code;
         used.add($arrayName);
         
         Identifier currId = null;
@@ -1528,7 +1369,7 @@ arrayAccess returns [
         $code = $arrayName + "[" + $e1.code + "]";
         $hasKnownValue = false;
     }
-| id=DNT L_SQBR e2=expr["fa0"] R_SQBR L_SQBR e3=expr["fa0"] R_SQBR    // 2D (e2, e3 are indices)
+| id=DNT L_SQBR e2=expr R_SQBR L_SQBR e3=expr R_SQBR    // 2D (e2, e3 are indices)
     {
         // Set context fields
         $arrayName = $id.getText();

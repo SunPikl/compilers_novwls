@@ -1,0 +1,9 @@
+//flt x = 2.0;
+
+flt x = 10.1 + 2;
+
+flt y = x - 2;
+
+prnt(2.3);
+prnt(x);
+prnt(y);

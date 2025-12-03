@@ -1,4 +1,4 @@
-// Generated from c:/Users/Morgan/Downloads/fall_25/Compilers/compilers_novwls/NoVwls.g4 by ANTLR 4.13.1
+// Generated from c:/Users/Morgan/Downloads/fall_25/Compilers/compilers_novwls/Milestone4/NoVwls.g4 by ANTLR 4.13.1
  import java.util.*; import java.io.*;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.CharStream;
@@ -185,44 +185,29 @@ public class NoVwlsLexer extends Lexer {
 	        return numErrors;
 	    }
 
-	    //***code gen***
-	    //code storage
-	    StringBuilder text_sb = new StringBuilder(); // Stores text segment
+	    //code gen
+	    StringBuilder sb = new StringBuilder(); // Stores the generated program
 	    Identifier writeTo = null;
-	    StringBuilder data_sb = new StringBuilder(); //data segment
-	    int data_count = 0;
+	    void emit(String s, Identifier funct) { // Short-hand for adding to the program
+	        if(funct == null){
+	            sb.append(s);  
+	        } else {
+	            funct.storeFunct.append(s);
+	        }
+	    }    
 
-	    void emit(StringBuilder sb, String s, boolean newLine) { 
-	        sb.append(s);
-	        if (newLine) { sb.append("\n"); }
-	    }
-	    void emit(StringBuilder sb, String s) { emit(sb, s, true); }
-	    void data_emit(String s) { emit(data_sb, s); }
-	    void text_emit(String s) { emit(text_sb, s); } 
-
-	    //make file 
-	    final String ASSEMBLY_FILE = "code.s";
-
-	    final String CONST_PREFIX = "VAL";
-	    final String ID_PREFIX = "IDX";
-	    
 	    // Emit the preamble material for our program
 	    void openProgram() {
-	    data_emit("# =================================");
-	    data_emit("# Auto-generated code. Do not edit.");
-	    data_emit("# =================================");
-	    data_emit("    .data");
-
-	    text_emit("    .text");
-	    text_emit("main: ");
-	  }
+	        emit("import java.util.*;\n", null);
+	        emit("public class NoVwlsProgram {\n", null);
+	        emit("  public static void main(String[] args) throws Exception {\n", null);
+	        emit("    Scanner in = new Scanner(System.in);\n", null);
+	    }
 
 	    // Emit the postamble material for our program
 	    void closeProgram() {
-	        text_emit("end:");
-	        text_emit("    li    a0, 0");
-	        text_emit("    li    a7, 93");
-	        text_emit("    ecall");
+	        emit(" in.close();\n", null);
+	        emit("  }\n", null);
 
 	        //export functions **dont forget to check function definition **
 	        for (Identifier object : mainTable.table.values()) {
@@ -232,7 +217,7 @@ public class NoVwlsLexer extends Lexer {
 	                String type = mapType(object.type); 
 	                
 	                //establish function and parameters
-	                //emit("public static " + type + " " + object.id + "( " , null);
+	                emit("public static " + type + " " + object.id + "( " , null);
 	                
 	                if(object.parameters != null){
 	                    for(int p = 0; p < object.parameters.size(); p++){
@@ -241,102 +226,42 @@ public class NoVwlsLexer extends Lexer {
 	                        // type - Use mapType 
 	                        String ptype = mapType(parameter.type); 
 	                        
-	                        //emit( ptype + " " + parameter.id, null);
+	                        emit( ptype + " " + parameter.id, null);
 	                        if((p+1) != object.parameters.size()){
-	                            //emit( ", ", null);
+	                            emit( ", ", null);
 	                        }
 	                    }
 	                }
-	                //emit(" ) { \n", null);
+	                emit(" ) { \n", null);
 
 	                //open scanner
-	                //emit(" Scanner in = new Scanner(System.in);\n", null);
+	                emit(" Scanner in = new Scanner(System.in);\n", null);
 
 	                //emit content
-	                //emit(object.storeFunct.toString(), null);
+	                emit(object.storeFunct.toString(), null);
 
 	                //finish
-	                //emit("}\n", null);
+	                emit("}\n", null);
 	            }
 	        }
 
+	        emit("}\n", null);
 	    }
 
-	    //send values
-	    String addDoubleValue(double x) {
-	        String label = CONST_PREFIX+data_count;
-	        data_count++;
-	        data_emit(label + ":    .double " + x);
-	        return label;
+	    void generateAssign(boolean declare, String name, String rhsJavaCode, String type) {
+	        String javaType = mapType(type);
+	        
+	        String declarationPrefix = declare ? javaType + " " : " ";
+	        
+	        emit("    " + declarationPrefix + name + " = " + rhsJavaCode + ";\n", writeTo);
 	    }
 
-	    void addSymbolsToData(SymbolTable table) {
-	        table.table.forEach((id, symbol) -> {  { 
-	            String label = ID_PREFIX + id;
-	            data_emit(label + ":    .double 0.0");
-	        }});
-	    }
-
-	    //loading values to register
-	    StringBuilder generateDoubleConstant(String register, double value) {
-	        StringBuilder code = new StringBuilder();
-	        String label = addDoubleValue(value);
-	        emit(code, "    la " + "t0," + label); 
-	        emit(code, "    fld " + register + ", 0(t0)");
-	        return code;
-	    }
-
-	    StringBuilder generateLoadId(String register, String id) {
-	        StringBuilder code = new StringBuilder();
-	        String label = ID_PREFIX + id;
-	        emit(code, "    la " + "t0," + label); 
-	        emit(code, "    fld " + register + ", 0(t0)");
-	        System.out.println("DEBUG: load id " + id + " into register " + register);
-	        return code;
-	    }
-
-	    //generate assignments
-	    void generateAssign(String name, StringBuilder rhsJavaCode, String register) {
-	        // tempRegister is either t0 or t1 (if t0 is taken)
-	        String tempRegister = register.equals("t0") ? "t1" : "t0";
-
-	        emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
-	        emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
-	        System.out.println("DEBUG: assign to " + name + " from register " + register);
-	    }
-
-	    //generate to read
-	    void generateReadDouble(StringBuilder code, String register) {
-	        emit(code, "    li    a7, 7");  // a7=7 is for reading doubles
-	        emit(code, "    ecall");        // invoke the system call
-	        if (!register.equals("fa0")) {
-	            // Transfer the results over to register from fa0.
-	            //    e.g. fmv.d fa1, fa0   fa1 = fa0
-	            emit(code, "    fmv.d " + register + ",fa0");
-	        }
-	    }
-
-	    //generate to print
-	    void generatePrintDouble(StringBuilder code, String register) {
-	        if (!register.equals("fa0")) {
-	            // Need to transfer the value in register to fa0
-	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
-	            emit(code, "    fmv.d fa0," + register);
-	        }
-	        emit(code, "    li    a7, 3");  // a7=3 is for printing doubles
-	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-	        emit(code, "    ecall");        // invoke the system call
-	    }
-
-	    /// Write the generated Java to file.
+	    // Write the generated Java to file.
 	    void writeFile() {
-	        try (PrintWriter pw = new PrintWriter(ASSEMBLY_FILE, "UTF-8")) {
-	            pw.print(data_sb.toString());
-	            pw.print(text_sb.toString());
+	        try (PrintWriter pw = new PrintWriter("NoVwlsProgram.java", "UTF-8")) {
+	            pw.print(sb.toString());
 	        } catch (Exception e) {
-	            System.err.println("error: failed to write to " + ASSEMBLY_FILE + ": " + e.getMessage());
+	            System.err.println("error: failed to write NoVwlsProgram.java: " + e.getMessage());
 	        }
 	    }
 
