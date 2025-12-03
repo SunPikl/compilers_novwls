@@ -183,16 +183,20 @@ grammar NoVwls;
     StringBuilder generateDoubleConstant(String register, double value) {
         StringBuilder code = new StringBuilder();
         String label = addDoubleValue(value);
+        emit(code, "    # Loading constant " + value + " into register " + register); 
         emit(code, "    la " + "t0," + label); 
         emit(code, "    fld " + register + ", 0(t0)");
+        emit(code, "    ");
         return code;
     }
 
     StringBuilder generateLoadId(String register, String id) {
         StringBuilder code = new StringBuilder();
         String label = ID_PREFIX + id;
+        emit(code, "    # Loading id " + id + " into register " + register); 
         emit(code, "    la " + "t0," + label); 
         emit(code, "    fld " + register + ", 0(t0)");
+        emit(code, "    ");
         System.out.println("DEBUG: load id " + id + " into register " + register);
         return code;
     }
@@ -202,8 +206,10 @@ grammar NoVwls;
         // tempRegister is either t0 or t1 (if t0 is taken)
         String tempRegister = register.equals("t0") ? "t1" : "t0";
 
+        emit(rhsJavaCode, "    # Assigning to variable " + name);
         emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
         emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+        emit(rhsJavaCode, "    ");
         System.out.println("DEBUG: assign to " + name + " from register " + register);
     }
 
@@ -225,11 +231,13 @@ grammar NoVwls;
             //    e.g. fmv.d fa0, fa1   fa0 = fa1
             emit(code, "    fmv.d fa0," + register);
         }
+        emit(code, "    # Emitting print double"); 
         emit(code, "    li    a7, 3");  // a7=3 is for printing doubles
         emit(code, "    ecall");        // invoke the system call
         emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
         emit(code, "    li    a7, 11"); // a7=11 is for printing a character
         emit(code, "    ecall");        // invoke the system call
+        emit(code, "    ");
     }
 
     /// Write the generated Java to file.
@@ -1152,7 +1160,7 @@ multiplicativeExpr [String register] returns [boolean hasKnownValue, String type
     })*;
 
 unaryExpr [String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code]: 
-    op=('+' | '-' | '!')? a=factor [$register]
+     op=('+' | '-' | '!')? a=factor [$register] 
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;

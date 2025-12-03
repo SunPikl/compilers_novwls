@@ -1,8 +1,10 @@
 //flt x = 2.0;
 
-flt x = 10.1 + 2;
+flt x = 1.0 - 2 * 3;
 
 flt y = x - 2;
+
+flt z = scnFLT;
 
 prnt(2.3);
 prnt(x);
