@@ -1,11 +1,23 @@
-//flt x = 2.0;
 
-flt x = 1.0 - 2 * 3;
 
-flt y = x - 2;
+nt a = 2;
+prnt(a);
 
-flt z = scnFLT;
+flt b = 4.0;
+prnt(b);
 
-prnt(2.3);
-prnt(x);
-prnt(y);
+//strng c = "hi";
+//prnt(c);
+
+flt q = a / b;
+prnt(q);
+
+flt nono = q + 2.3 + 4.2 / 22  + 2.3 * 2 ;
+prnt(nono);
+
+bl more = 2 != 2*4.8;
+prnt(more);
+
+
+//flt g = scnFLT;
+//prnt(g);

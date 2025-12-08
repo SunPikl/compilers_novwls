@@ -88,6 +88,37 @@ grammar NoVwls;
     }
 
     //***code gen***
+    //registers
+    //register trackers
+    int nextIntRegister = 1;
+    int nextFloatRegister = 1;
+    int nextTotRegister = 1;
+
+    String getNewRegister(String type) {
+        String ret;
+        // if (type.equals("nt")) ret = "" + nextIntRegister++;
+        // else ret = "" + nextFloatRegister++;
+        ret = "" + nextTotRegister;
+
+        // if(nextIntRegister > 7 || nextFloatRegister > 7){
+        //     System.err.println("error: ran out of registers");
+        //     System.exit(1);
+        // } else if(nextTotRegister > 7) {
+        //     System.err.println("error: ran out of registers");
+        //     System.exit(1);
+        // }
+        nextTotRegister++;
+
+        return ret;
+    }
+
+    // Reset registers at the start of a new expression
+    void resetRegisters() {
+        nextIntRegister = 1;
+        nextFloatRegister = 1;
+        nextTotRegister = 1;
+    }
+
     //code storage
     StringBuilder text_sb = new StringBuilder(); // Stores text segment
     Identifier writeTo = null;
@@ -172,10 +203,58 @@ grammar NoVwls;
         return label;
     }
 
+    String addIntValue(int x) {
+        String label = CONST_PREFIX+data_count;
+        data_count++;
+        data_emit(label + ":    .word " + x);
+        return label;
+    }
+
+    String addStringValue(String x) {
+        String label = CONST_PREFIX+data_count;
+        data_count++;
+        data_emit(label + ":    .asciz \"" + x + "\"");
+        return label;
+    }
+
+    String addBoolValue(int x) {
+        String label = CONST_PREFIX+data_count;
+        data_count++;
+        data_emit(label + ":    .byte " + x);
+        return label;
+    }
+
+    String addCharValue(char x) {
+        String label = CONST_PREFIX+data_count;
+        data_count++;
+        data_emit(label + ":    .byte " + x);
+        return label;
+    }
+
     void addSymbolsToData(SymbolTable table) {
         table.table.forEach((id, symbol) -> {  { 
             String label = ID_PREFIX + id;
-            data_emit(label + ":    .double 0.0");
+            try{
+                if(symbol.type.equals("nt")){
+                    data_emit(label + ":    .word 0");
+                    return;
+                } else if(symbol.type.equals("flt")){
+                    data_emit(label + ":    .double 0.0");
+                    return;
+                } else if(symbol.type.equals("strng")){
+                    data_emit(label + ":    .asciz \"\""); 
+                    return;
+                } else if(symbol.type.equals("chr")){
+                    data_emit(label + ":    .byte 0");
+                    return;
+                } else if(symbol.type.equals("bl")){
+                    data_emit(label + ":    .byte 0");
+                    return;
+                }
+            } catch (Exception e){
+                error(null, "unknown type for symbol '" + id + "' in data segment");
+            }
+            
         }});
     }
 
@@ -190,12 +269,55 @@ grammar NoVwls;
         return code;
     }
 
+    StringBuilder generateIntConstant(String register, int value) {
+        StringBuilder code = new StringBuilder();
+        String label = addIntValue(value);
+        emit(code, "    # Loading constant " + value + " into register " + register); 
+        emit(code, "    la " + "t0," + label); 
+        emit(code, "    lw " + register + ", 0(t0)");
+        emit(code, "    ");
+        return code;
+    }
+
+    StringBuilder generateStringConstant(String register, String value) {
+        StringBuilder code = new StringBuilder();
+        String label = addStringValue(value);
+        emit(code, "    # Loading constant " + value + " into register " + register); 
+        emit(code, "    la " + "a0," + label); 
+        emit(code, "    ");
+        return code;
+    }
+
+    StringBuilder generateCharConstant(String register, char value) {
+        StringBuilder code = new StringBuilder();
+        String label = addCharValue(value);
+        emit(code, "    # Loading constant " + value + " into register " + register); 
+        emit(code, "    la " + "t0," + label); 
+        emit(code, "    lw " + register + ", 0(t0)");
+        emit(code, "    ");
+        return code;
+    }
+
+    StringBuilder generateBoolConstant(String register, int value) {
+        StringBuilder code = new StringBuilder();
+        String label = addBoolValue(value);
+        emit(code, "    # Loading constant " + value + " into register " + register); 
+        emit(code, "    la " + "t0," + label); 
+        emit(code, "    lw " + register + ", 0(t0)");
+        emit(code, "    ");
+        return code;
+    }
+
     StringBuilder generateLoadId(String register, String id) {
         StringBuilder code = new StringBuilder();
         String label = ID_PREFIX + id;
         emit(code, "    # Loading id " + id + " into register " + register); 
         emit(code, "    la " + "t0," + label); 
-        emit(code, "    fld " + register + ", 0(t0)");
+        if(register.startsWith("f")) {
+            emit(code, "    fld " + register + ", 0(t0)");
+        } else {
+            emit(code, "    lw " + register + ", 0(t0)");
+        }
         emit(code, "    ");
         System.out.println("DEBUG: load id " + id + " into register " + register);
         return code;
@@ -208,7 +330,11 @@ grammar NoVwls;
 
         emit(rhsJavaCode, "    # Assigning to variable " + name);
         emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
-        emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+        if(register.startsWith("f")) {
+            emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+        } else {
+            emit(rhsJavaCode, "    sw " + register + ", 0(" + tempRegister + ")");
+        }
         emit(rhsJavaCode, "    ");
         System.out.println("DEBUG: assign to " + name + " from register " + register);
     }
@@ -224,6 +350,34 @@ grammar NoVwls;
         }
     }
 
+    void generateReadInt(StringBuilder code, String register) {
+        emit(code, "    li    a7, 5");  // a7=5 is for reading floats
+        emit(code, "    ecall");        // invoke the system call
+        if (!register.equals("a0")) {
+            // Transfer the results over to register from ft0.
+            emit(code, "    fmv.d " + register + ",a0");
+        }
+    }
+
+    void generateReadString(StringBuilder code, String register) {
+        emit(code, "    li    a7, 8");  // a7=8 is for reading strings
+        emit(code, "    ecall");        // invoke the system call
+        if (!register.equals("a0")) {
+            // Transfer the results over to register from a0.
+            emit(code, "    fmv.d " + register + ",a0");
+        }
+    }
+
+    void generateReadChar(StringBuilder code, String register) {
+        emit(code, "    li    a7, 12");  // a7=12 is for reading chars
+        emit(code, "    ecall");        // invoke the system call
+        if (!register.equals("a0")) {
+            // Transfer the results over to register from a0.
+            emit(code, "    fmv.d " + register + ",a0");
+        }
+    }
+
+
     //generate to print
     void generatePrintDouble(StringBuilder code, String register) {
         if (!register.equals("fa0")) {
@@ -233,6 +387,52 @@ grammar NoVwls;
         }
         emit(code, "    # Emitting print double"); 
         emit(code, "    li    a7, 3");  // a7=3 is for printing doubles
+        emit(code, "    ecall");        // invoke the system call
+        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        emit(code, "    ecall");        // invoke the system call
+        emit(code, "    ");
+    }
+
+    void generatePrintInt(StringBuilder code, String register) {
+        if (!register.equals("a0")) {
+            // Need to transfer the value in register to fa0
+            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+            emit(code, "    fmv.d a0," + register);
+        }
+        emit(code, "    # Emitting print int"); 
+        emit(code, "    li    a7, 1");  // a7=1 is for printing doubles
+        emit(code, "    ecall");        // invoke the system call
+        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        emit(code, "    ecall");        // invoke the system call
+        emit(code, "    ");
+    }
+
+    void generatePrintString(StringBuilder code, String register) {
+        if (!register.equals("a0")) {
+            // Need to transfer the value in register to fa0
+            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+            emit(code, "    fmv.d a0," + register);
+        }
+        emit(code, "    # Emitting print string"); 
+        emit(code, "    li    a7, 4");  // a7=4 is for printing strings
+        emit(code, "    ecall");        // invoke the system call
+        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        emit(code, "    ecall");        // invoke the system call
+        emit(code, "    ");
+    }
+
+    void generatePrintBool(StringBuilder code, String register) {
+        if (!register.equals("a0")) {
+            // Need to transfer the value in register to fa0
+            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+            emit(code, "    fmv.d a0," + register);
+        }
+        System.out.println("printing bool");
+        emit(code, "    # Emitting print bool"); 
+        emit(code, "    li    a7, 1");  // a7=5 is for printing bool values
         emit(code, "    ecall");        // invoke the system call
         emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
         emit(code, "    li    a7, 11"); // a7=11 is for printing a character
@@ -382,7 +582,7 @@ declareStmt : dt=dataType id=DNT SCOLN
     }
     ;
 
-assignStmt returns [StringBuilder code]: {String register = "fa0";}
+assignStmt returns [StringBuilder code]: 
     (dt=dataType)? DNT    
     {
         //taking in id, find if it exists
@@ -397,6 +597,38 @@ assignStmt returns [StringBuilder code]: {String register = "fa0";}
             }
         }
         //preexistingLHS = scopeStack.peek().table.containsKey(currLHS);
+
+        //assign register
+        String register = "fa0"; //default
+        if(preexistingLHS){
+            if(currId.type.equals("nt")){
+                register = "a0";
+            } else if(currId.type.equals("flt")){
+                register = "fa0";
+            } else if(currId.type.equals("strng")){
+                register = "a0";
+            } else if(currId.type.equals("chr")){
+                register = "a0";
+            } else if(currId.type.equals("bl")){
+                register = "a0";
+            }
+        } else {
+            try {
+                if($dt.type.equals("nt")){
+                    register = "a0";
+                } else if($dt.type.equals("flt")){
+                    register = "fa0";
+                } else if($dt.type.equals("strng")){
+                    register = "a0";
+                } else if($dt.type.equals("chr")){
+                    register = "a0";
+                } else if($dt.type.equals("bl")){
+                    register = "a0";
+                }
+            } catch (Exception e){
+                error($DNT, "data type not specified for '" + currLHS + "'");
+            }
+        }
 
     }
     SSGN rhs [register] {
@@ -423,16 +655,26 @@ assignStmt returns [StringBuilder code]: {String register = "fa0";}
 
             //type check 
             if(!($rhs.type.equals(currId.type))){
-                error($DNT, "type mismatch for " + currLHS + "'");
-                errorFlag = true;
+                //System.out.println("HERE " + $rhs.type);
+                if(($rhs.type.equals("nt") && currId.type.equals("bl")) && ($rhs.value == 0 || $rhs.value == 1 )){
+                    //valid
+                } else {
+                    error($DNT, "type mismatch for " + currLHS + "'");
+                    errorFlag = true;
+                }
             }
         } else {
-            System.out.println($dt.type + " and " + $rhs.type);
+            //System.out.println($dt.type + " and " + $rhs.type);
             try {
                 if(!($rhs.type.equals($dt.type))){
-                    //System.out.println("DEBUG issue with type match for " + currLHS + " where " + $dt.type + " not " + $rhs.type);
-                    error($DNT, "type mismatch for " + currLHS );
-                    errorFlag = true;
+                    //System.out.println("HERE 2 " + $rhs.type);
+                    if(($rhs.type.equals("nt") && $dt.type.equals("bl")) && ($rhs.value == 0 || $rhs.value == 1 )){
+                        //valid
+                    } else {
+                        //System.out.println("DEBUG issue with type match for " + currLHS + " where " + $dt.type + " not " + $rhs.type);
+                        error($DNT, "type mismatch for " + currLHS );
+                        errorFlag = true;
+                    }
                 } 
             } catch (Exception e){
                 error($DNT," cannot access a nonexistant value");
@@ -452,12 +694,12 @@ assignStmt returns [StringBuilder code]: {String register = "fa0";}
         
         if (preexistingLHS) {
             // Just a new assignment to an existing variable
-            generateAssign(currLHS, $rhs.code, register);
+            generateAssign(currLHS, $rhs.code, $rhs.finReg);
         } else {
             // A new variable is being "declared"
             //Identifier newId = new Identifier(currLHS);
             mainTable.table.put(newId.id, newId);
-            generateAssign(newId.id, $rhs.code, register);
+            generateAssign(newId.id, $rhs.code, $rhs.finReg);
         }
 
         $code = $rhs.code;
@@ -467,7 +709,7 @@ assignStmt returns [StringBuilder code]: {String register = "fa0";}
         currLHS = null;
     } SCOLN ;
 
-rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String codes]:
+rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String codes, String finReg]:
       e = expr[$register]
         {$hasKnownValue = $e.hasKnownValue;   
             $type = $e.type;                     
@@ -478,6 +720,7 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
             $arrayValues = $e.arrayValues;     
             $array2DValues = $e.array2DValues; 
             $code = $e.code;
+            $finReg = $e.finReg;
 
             if ($type.equals("flt")) {
                 //$code = "(float)(" + $code + ")";
@@ -498,9 +741,10 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
         {
             try{
                 $code = new StringBuilder();
-                //generateReadInt($code, register);
+                $finReg = register;
+                generateReadInt($code, register);
                 $hasKnownValue = false;
-                //$value = input;
+                $value = 0;
                 $type = "nt";
                 $isArray = false;
                 $is2DArray = false;
@@ -513,10 +757,11 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
         {
             try{
                 //$code = "in.nextFloat()";
+                $finReg = register;
                 $code = new StringBuilder();
                 generateReadDouble($code, register);
                 float input = 0.0f;
-                $hasKnownValue = true;
+                $hasKnownValue = false;
                 $value = input;
                 $type = "flt";
                 $isArray = false;
@@ -529,10 +774,11 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
     | KW_SCN_STRNG
         {
             //$code = "in.nextLine()";
+            $finReg = register;
             $code = new StringBuilder();
-            //generateReadString($code, register);
+            generateReadString($code, register);
             //String input = scan.nextLine();
-            $hasKnownValue = true;
+            $hasKnownValue = false;
             //$content = "\"" + input + "\"";
             $type = "strng";
             $isArray = false;
@@ -541,8 +787,9 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
     | KW_SCN_CHR
         {
             //$code = "in.next().charAt(0)";
+            $finReg = register;
             $code = new StringBuilder();
-            //generateReadChar($code, register);
+            generateReadChar($code, register);
             $hasKnownValue = true;
             $type = "chr";
             $isArray = false;
@@ -618,28 +865,51 @@ arrayElement returns [boolean hasKnownValue, Object elementValue, String element
         }
     };
 
-printStmt returns [StringBuilder code]: { String register = "fa0"; }
-KW_PRNT '(' first=printExpr 
+printStmt returns [StringBuilder code]: 
+    { 
+        String register = "unk"; 
+    }
+    KW_PRNT '(' first=printExpr [register]
     {
         //emit("    System.out.print(String.valueOf(" + $first.code  + "));\n", writeTo);
         $code = $first.code;  // Start with the code for the expression
         if($first.type.equals("nt")){
-            //generatePrintInt($code, register);
+            generatePrintInt($code, "a0");
         } else if($first.type.equals("flt")){
-            generatePrintDouble($code, register);
+            generatePrintDouble($code, "fa0");
+        } else if($first.type.equals("strng")){
+            generatePrintString($code, "a0");
+        } else if($first.type.equals("chr")){
+            generatePrintString($code, "a0");
+        } else if($first.type.equals("bl")){
+            generatePrintBool($code, "a0");
         }
     }
-    (CMM more=printExpr
+    (CMM more=printExpr[register]
     {
+        $code = $more.code;  // Start with the code for the expression
+        if($first.type.equals("nt")){
+            generatePrintInt($code, "a0");
+        } else if($first.type.equals("flt")){
+            generatePrintDouble($code, "fa0");
+        } else if($first.type.equals("strng")){
+            generatePrintString($code, "a0");
+        } else if($first.type.equals("chr")){
+            generatePrintString($code, "a0");
+        } else if($first.type.equals("bl")){
+            generatePrintBool($code, "a0");
+        }
+        
         //emit("    System.out.print(String.valueOf(" + $more.code  + "));\n", writeTo);
     }
     
     )* ')' SCOLN 
     { 
+
         //emit("    System.out.println(" + ");\n", writeTo);
     } ;
 
-printExpr returns [StringBuilder code, String type]: { String register = "fa0"; }
+printExpr [String register] returns [StringBuilder code, String type]: 
     expr [register]
     { 
         //emit("    System.out.print(" + $expr.code  + ");\n", writeTo);
@@ -992,7 +1262,7 @@ forLoopInc :
                 }             // x--
     ;
 
-expr[String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code]: 
+expr[String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code, String finReg]: 
         a=factor [$register]
         {
             $hasKnownValue = $a.hasKnownValue;
@@ -1004,6 +1274,7 @@ expr[String register] returns [boolean hasKnownValue, String type, float value, 
             $arrayValues = $a.arrayValues;
             $array2DValues = $a.array2DValues;
             $code = $a.code;
+            $finReg = $a.finReg;
             
         }
     | b=comparisonExpr[$register]
@@ -1014,93 +1285,277 @@ expr[String register] returns [boolean hasKnownValue, String type, float value, 
             $isArray = false;
             $is2DArray = false;
             $code = $b.code;
+            $finReg = $b.finReg;
         };
 
-comparison [String register] returns [boolean hasKnownValue, float value, StringBuilder code] : 
+comparison [String register] returns [boolean hasKnownValue, float value, StringBuilder code, String finReg] : 
     a=comparisonExpr [$register]
     {
         if(!($a.type.equals("bl"))){
             System.err.println("Comparison must return boolean");
         } else {
-            $hasKnownValue = true;
+            $hasKnownValue = $a.hasKnownValue;
             $value = $a.value;
             $code = $a.code;
+            $finReg = $a.finReg;
         }
     };
 
-comparisonExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code] : 
+comparisonExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code, String finReg] : 
     a=additiveExpr[$register] 
     {  
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
         $code = $a.code; 
-        String nextRegister = ($register.equals("ft0")) ? "ft1" : "ft0";
+        $finReg = $a.finReg;
+        //String nextRegister = ($register.equals("ft0")) ? "ft1" : "ft0";
 
     }  
     (op = (LSSTHN | GRTRTHN | LSSTHNREQL | GRTRTHNREQL | EQL | NTEQL) 
+    {
+        //assign new reg w every new op
+        String nextRegister = getNewRegister($type);
+        System.out.println((nextTotRegister) + " register");
+    }
     b=additiveExpr [nextRegister]
     {  
         $code.append($b.code);
 
-        if ($b.hasKnownValue) {  
+        //if ($b.hasKnownValue) {  
             String opType = $op.getText(); 
-            if (opType.equals(">") && $a.value > $b.value) {  
-                $value = 1;  
-                emit($code, "    bgt " + $register + "," + $register + "," + nextRegister);
-            } else if (opType.equals("<") && $a.value < $b.value) {  
-                $value = 1;  
-                emit($code, "    blt " + $register + "," + $register + "," + nextRegister);
-            } else if (opType.equals("==") && $a.value == $b.value) {  
-                $value = 1;  
-                emit($code, "    beq " + $register + "," + $register + "," + nextRegister);
-            } else if (opType.equals("<=") && $a.value <= $b.value) {  
-                $value = 1;  
-                emit($code, "    ble " + $register + "," + $register + "," + nextRegister);
-            } else if (opType.equals(">=") && $a.value >= $b.value) {  
-                $value = 1;  
-                emit($code, "    bge " + $register + "," + $register + "," + nextRegister);
-            } else if (opType.equals("!=") && $a.value != $b.value) {  
-                $value = 1; 
-                emit($code, "    bne " + $register + "," + $register + "," + nextRegister); 
+            if (opType.equals("<")) {  
+                $value =  ($value < $b.value) ? 1 : 0; 
+
+                //emit based on type 
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " +  $finReg);   // promote int
+                    emit($code, "    flt.d " + $finReg + ", ft1," + $b.finReg); // put back into int register
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " + $b.finReg);   // promote int
+                    emit($code, "    flt.d " + $b.finReg + ", " + $finReg + ", ft1"); // add float
+                    $finReg  = $b.finReg; //update to int register
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    slt " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    String diffReg = getNewRegister("nt");
+                    emit($code, "    flt.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
+                    $finReg = diffReg;
+                }
+
+                //emit($code, "    bgt " + $register + "," + $register + "," + nextRegister);
+            } else if (opType.equals(">")) {  
+                $value =  ($value > $b.value) ? 1 : 0;
+
+                //emit based on type 
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " +  $finReg);   // promote int
+                    emit($code, "    flt.d " + $finReg + ", " + $b.finReg + ", ft1"); // put back into int register
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " + $b.finReg);   // promote int
+                    emit($code, "    flt.d " + $b.finReg + ", ft1, " + $finReg); // add float
+                    $finReg  = $b.finReg; 
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    slt " + $finReg + ", " + $b.finReg + ", " + $finReg );
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    String diffReg = getNewRegister("nt");
+                    emit($code, "    flt.d " + diffReg + ", " + $b.finReg + ", " + $finReg );
+                    $finReg = diffReg;
+                }
+
+                //emit($code, "    blt " + $register + "," + $register + "," + nextRegister);
+            } else if (opType.equals("==")) {  
+                $value =  ($value == $b.value) ? 1 : 0;
+
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " +  $finReg);   // promote int
+                    emit($code, "    feq.d " + $finReg + ", ft1," + $b.finReg); // put back into int register
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " + $b.finReg);   // promote int
+                    emit($code, "    feq.d " + $b.finReg + ", " + $finReg + ", ft1"); // add float
+                    $finReg  = $b.finReg; //update to int register
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    xor  t0, " + $finReg + ", " + $b.finReg );
+                    emit($code, "    slti " + $finReg +", t0, 1");
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    String diffReg = getNewRegister("nt");
+                    emit($code, "    feq.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
+                    $finReg = diffReg;
+                }
+
+                //emit($code, "    beq " + $register + "," + $register + "," + nextRegister);
+            } else if (opType.equals("<=")) {  
+                $value =  ($value <= $b.value) ? 1 : 0;
+
+                //emit based on type 
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " +  $finReg);   // promote int
+                    emit($code, "    fle.d " + $finReg + ", ft1," + $b.finReg); // put back into int register
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " + $b.finReg);   // promote int
+                    emit($code, "    fle.d " + $b.finReg + ", " + $finReg + ", ft1"); // add float
+                    $finReg  = $b.finReg; //update to int register
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    slt t1, " + $b.finReg + ", " + $finReg ); //a > b
+                    emit($code, "    xori " + $finReg + ", t1, 1"); //invert so a <= b
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    String diffReg = getNewRegister("nt");
+                    emit($code, "    fle.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
+                    $finReg = diffReg;
+                }
+
+                //emit($code, "    ble " + $register + "," + $register + "," + nextRegister);
+            } else if (opType.equals(">=") ) {  
+                $value =  ($value >= $b.value) ? 1 : 0;
+
+                //emit based on type 
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " +  $finReg);   // promote int
+                    emit($code, "    fle.d " + $finReg + ", " + $b.finReg + ", ft1"); // put back into int register
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " + $b.finReg);   // promote int
+                    emit($code, "    fle.d " + $b.finReg + ", ft1, " + $finReg); // add float
+                    $finReg  = $b.finReg; 
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    slt t1, " + $finReg + ", " + $b.finReg ); //a < b
+                    emit($code, "    xori " + $finReg + ", t1, 1"); //invert so a >= b
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    String diffReg = getNewRegister("nt");
+                    emit($code, "    fle.d " + diffReg + ", " + $b.finReg + ", " + $finReg );
+                    $finReg = diffReg;
+                }
+
+                //emit($code, "    bge " + $register + "," + $register + "," + nextRegister);
+            } else if (opType.equals("!=") ) {  
+                $value =  ($value != $b.value) ? 1 : 0;
+
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " +  $finReg);   // promote int
+                    emit($code, "    feq.d " + $finReg + ", ft1," + $b.finReg); // put back into int register
+                    emit($code, "    xori " + $finReg + ", " + $finReg + ", 1");
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " + $b.finReg);   // promote int
+                    emit($code, "    feq.d " + $b.finReg + ", " + $finReg + ", ft1"); // add float
+                    emit($code, "    xori " + $b.finReg + ", " + $b.finReg + ", 1");
+                    $finReg  = $b.finReg; //update to int register
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    xor  t0, " + $finReg + ", " + $b.finReg );
+                    emit($code, "    slti " + $finReg +", t0, 1");
+                    emit($code, "    xori " + $finReg + ", " + $finReg + ", 1");
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    String diffReg = getNewRegister("nt");
+                    emit($code, "    feq.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
+                    emit($code, "    xori " + diffReg + ", " + diffReg + ", 1");
+                    $finReg = diffReg;
+                }
+
+                //emit($code, "    bne " + $register + "," + $register + "," + nextRegister); 
             } else $value = 0;  
             $type = "bl";
 
             //$code = "(" + $a.code + $op.getText() + $b.code + ")"; 
-        } else {
-            $hasKnownValue = false;
-            $type = "bl";
-            //$code = "(" + $a.code + $op.getText() + $b.code + ")";  
-        }
+        // } else {
+        //     $hasKnownValue = false;
+        //     $type = "bl";
+        //     //$code = "(" + $a.code + $op.getText() + $b.code + ")";  
+        // }
     })*;
 
-additiveExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code] : 
+additiveExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code, String finReg] : 
     a=multiplicativeExpr [$register]
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
         $code = $a.code;
-        String nextRegister = ($register.equals("ft0")) ? "ft1" : "ft0";
+        $finReg = $a.finReg;
+        //String nextRegister = getNewRegister($type);
     }
-    (op=(PLS | MNS) b=multiplicativeExpr [nextRegister]
+    (op=(PLS | MNS)
+    {
+        //assign new reg w every new op
+        String nextRegister = getNewRegister($type);
+        System.out.println((nextTotRegister) + " register");
+    }
+     b=multiplicativeExpr [nextRegister]
     {
         $code.append($b.code);
         //if ($hasKnownValue && $b.hasKnownValue) {
             if ($op.getText().equals("+")) {
                 $value = $value + $b.value;
-                emit($code, "    fadd.d " + $register + "," + $register + "," + nextRegister);
+                
+                // if($b.type.equals("flt") && $a.type.){
+                //     $finReg = "fa" + nextRegister;
+                // } else {
+                //     $finReg = "a" + nextRegister;
+                // }
+
+                //System.out.println("type " + $type);
+
+                //emit based on type 
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    System.out.println("adding " + $a.value + " and " + $b.value);
+                    emit($code, "    fcvt.d.w ft1, " +  $finReg);   // promote int
+                    emit($code, "    fadd.d " + $b.finReg + ", " + $b.finReg + ", ft1"); // add float
+                    $finReg = $b.finReg;
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w ft1, " + $b.finReg);   // promote int
+                    emit($code, "    fadd.d " + $finReg + ", " + $finReg + ", ft1"); // add float
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    add " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    emit($code, "    fadd.d " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                }
+
+
             } else {
                 $value = $value - $b.value;
-                emit($code, "    fsub.d " + $register + "," + $register + "," + nextRegister);
+                
+                //System.out.println("type " + $type);
+
+                //emit based on type 
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    System.out.println("adding " + $a.value + " and " + $b.value);
+                    emit($code, "    fcvt.d.w f0, " +  $finReg);   // promote int
+                    emit($code, "    fsub.d " + $b.finReg + ", f0, " + $b.finReg); // add float
+                    $finReg = $b.finReg;
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w f0, " + $b.finReg);   // promote int
+                    emit($code, "    fsub.d " + $finReg + ", " + $finReg + ", f0"); // add float
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    sub " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    emit($code, "    fsub.d " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                }
+
+                //emit($code, "    fsub.d " + $register + "," + $register + "," + nextRegister);
             }
-            if ("flt".equals($a.type) || "flt".equals($b.type)) {
+
+            if ($type.equals("flt") || $b.type.equals("flt")) {
                 $type = "flt";
                 //$code = "" + $value;
             } else {
                 $type = "nt";
                 //$code = "" + (int)$value;
             }
+
+            nextTotRegister --;
         // } else {
         //     $hasKnownValue = false;
         //     if ("flt".equals($a.type) || "flt".equals($b.type)) {
@@ -1110,18 +1565,33 @@ additiveExpr[String register] returns [boolean hasKnownValue, String type, float
         //     }
         //     //$code = "(" + $a.code + $op.getText() + $b.code + ")"; 
         // }
-    })*;
 
-multiplicativeExpr [String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code]: 
+    })*
+    {
+        resetRegisters();
+        System.out.println(nextTotRegister + " register");
+    }
+    ;
+
+multiplicativeExpr [String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code, String finReg]: 
     a=unaryExpr [$register]
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
         $code = $a.code;
-        String nextRegister = ($register.equals("ft0")) ? "ft1" : "ft0";
+        $finReg = $a.finReg;
+
+        //String nextRegister = getNewRegister($a.type);
+        
     }
-    ( op=( TMS | DVD | MOD) b=unaryExpr [nextRegister]
+    ( op=( TMS | DVD | MOD) 
+    {
+        //assign new reg w every new op
+        String nextRegister = getNewRegister($type);
+        System.out.println((nextTotRegister) + " register");
+    }
+    b=unaryExpr [nextRegister]
     {
         $code.append($b.code);
 
@@ -1129,46 +1599,98 @@ multiplicativeExpr [String register] returns [boolean hasKnownValue, String type
             error($op, "division by zero");
             $hasKnownValue = false; 
             //$code = "Error";
-        } else if ($hasKnownValue && $b.hasKnownValue) {
+        } else {
+
             if ($op.getText().equals("*")) {
                 $value = $value * $b.value;
-                emit($code, "    fmul.d " + $register + "," + $register + "," + nextRegister);
+
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    System.out.println("multiplying " + $a.value + " and " + $b.value);
+                    emit($code, "    fcvt.d.w f0, " +  $finReg);   // promote int
+                    emit($code, "    fmul.d " + $b.finReg + ", f0, " + $b.finReg); // add float
+                    $finReg = $b.finReg;
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w f0, " + $b.finReg);   // promote int
+                    emit($code, "    fmul.d " + $finReg + ", " + $finReg + ", f0"); // add float
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    mul " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    emit($code, "    fmul.d " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                }
+
+                //emit($code, "    fmul.d " + $register + "," + $register + "," + nextRegister);
             } else if ($op.getText().equals("%")){
                 $value = $value % $b.value;
-                emit($code, "    frem.d " + $register + "," + $register + "," + nextRegister);
+
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    System.out.println("mod of " + $a.value + " by " + $b.value);
+                    emit($code, "    fcvt.d.w f0, " +  $finReg);   // promote int
+                    emit($code, "    frem.d " + $b.finReg + ", f0, " + $b.finReg); // add float
+                    $finReg = $b.finReg;
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w f0, " + $b.finReg);   // promote int
+                    emit($code, "    frem.d " + $finReg + ", " + $finReg + ", f0"); // add float
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    rem " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    emit($code, "    frem.d " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                }
+                //emit($code, "    frem.d " + $register + "," + $register + "," + nextRegister);
             } else {
                 $value = $value / $b.value;
-                emit($code, "    fdiv.d " + $register + "," + $register + "," + nextRegister);
-            }
-            if ("flt".equals($a.type) || "flt".equals($b.type)) {
-                $type = "flt";
-                //$code = "" + $value;
-            } else {
-                $type = "nt";
-                //$code = "" + (int)$value;
-            }
-        } else {
-            $hasKnownValue = false;
-            // FIX 4: Safe string comparison
-            if ("flt".equals($a.type) || "flt".equals($b.type)) {
-                $type = "flt";
-            } else {
-                $type = "nt";
-            }
-            //$code = "(" + $a.code + $op.getText() + $b.code + ")"; 
-        }
-    })*;
 
-unaryExpr [String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code]: 
+                if ($type.equals("nt") && $b.type.equals("flt")) {
+                    //error($op, "type mismatch: cannot add int and float"); //temporary
+                    System.out.println("dividing " + $a.value + " by " + $b.value);
+                    emit($code, "    fcvt.d.w f0, " +  $finReg);   // promote int
+                    emit($code, "    fdiv.d " + $b.finReg + ", f0, " + $b.finReg); // add float
+                    $finReg = $b.finReg;
+                } else if ($type.equals("flt") && $b.type.equals("nt")) {
+                    //error($op, "type mismatch: cannot add float and int"); //temporary
+                    emit($code, "    fcvt.d.w f0, " + $b.finReg);   // promote int
+                    emit($code, "    fdiv.d " + $finReg + ", " + $finReg + ", f0"); // add float
+                } else if ($type.equals("nt") && $b.type.equals("nt")) {
+                    emit($code, "    div " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                } else if ($type.equals("flt") && $b.type.equals("flt")) {
+                    emit($code, "    fdiv.d " + $finReg + ", " + $finReg + ", " + $b.finReg );
+                }
+                //emit($code, "    fdiv.d " + $register + "," + $register + "," + nextRegister);
+            }
+        } 
+
+        //System.out.println(nextTotRegister + " register " + $op.getText());
+
+        if ("flt".equals($a.type) || "flt".equals($b.type)) {
+            $type = "flt";
+            //$code = "" + $value;
+        } else {
+            $type = "nt";
+            //$code = "" + (int)$value;
+        }
+        nextTotRegister --;
+    })*
+    {
+        //resetRegisters();
+        System.out.println(nextTotRegister + " register");
+    }
+    ;
+
+unaryExpr [String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code, String finReg]: 
      op=('+' | '-' | '!')? a=factor [$register] 
     {
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
         $type = $a.type;
+        $finReg = $a.finReg;
 
         try {
         if($op.getText().equals("-")){
-            emit($code, "    neg " + $register + "," + $register);
+            $value = -$a.value;
+            emit($code, "    neg " + $a.finReg + "," + $a.finReg);
         }
         } catch (Exception e) {
             // No unary operator present
@@ -1177,7 +1699,7 @@ unaryExpr [String register] returns [boolean hasKnownValue, String type, float v
         $code = $a.code;
     }; 
 
-factor [String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code]: 
+factor [String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code, String finReg]: 
       NT 
         {   $hasKnownValue = true; 
             $value = Integer.parseInt($NT.getText()); 
@@ -1186,7 +1708,24 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $is2DArray = false;
             //code = ""+(int)$value;
             int val = Integer.parseInt($NT.getText());
-            $code = generateDoubleConstant($register, (double) val);
+
+            if($register.equals("unk")){
+                $register = "a0"; //default register
+            } else if ($register.equals("ft0")){
+                $register = "a0"; //default float register
+            } else if ($register.equals("ft1")){
+                $register = "a0"; //default float register
+            } else if ($register.equals("fa0")){
+                $register = "a0"; //default float register
+            } else if ($register.equals("fa1")){
+                $register = "a0"; //default float register
+            } else if ($register.equals("1") || $register.equals("2") || $register.equals("3") || $register.equals("4") || $register.equals("5") || $register.equals("6") || $register.equals("7")){
+                $register = "a" + $register; //default register
+            }
+
+            $finReg = $register;
+
+            $code = generateIntConstant($finReg, val);
 
         }
     | FLT 
@@ -1197,7 +1736,20 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $is2DArray = false;
             //code = $FLT.getText() + "f";
             double val = Double.parseDouble($FLT.getText());
-            $code = generateDoubleConstant($register, val);
+
+            if($register.equals("unk")){
+                $register = "fa0"; //default register
+            } else if ($register.equals("a0")){
+                $register = "fa0"; //default float register
+            } else if ($register.equals("a1")){
+                $register = "fa0"; //default float register
+            } else if ($register.equals("1") || $register.equals("2") || $register.equals("3") || $register.equals("4") || $register.equals("5") || $register.equals("6") || $register.equals("7")){
+                $register = "fa" + $register; //default register
+            }
+
+            $finReg = $register;
+
+            $code = generateDoubleConstant($finReg, val);
         }
     | BL 
         { 
@@ -1213,6 +1765,14 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
                 $value = Integer.parseInt($BL.getText());
             }
             //$code = ""+(int)$value;
+            int val = Integer.parseInt($BL.getText());
+
+            if($register.equals("unk")){
+                $register = "a0"; //default register
+            }
+
+            $finReg = $register;
+            $code = generateBoolConstant($finReg, (int) $value);
         }
     | CHR
         {   $hasKnownValue = true; 
@@ -1221,6 +1781,14 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $isArray = false;
             $is2DArray = false;
             //$code = ""+$content;
+            char val = $content.charAt(1); // Extract the character between the single quotes
+
+            if($register.equals("unk")){
+                $register = "a0"; //default register
+            }
+
+            $finReg = $register;
+            $code = generateCharConstant($finReg, val);
         }
     | STRNG 
         {   $hasKnownValue = true; 
@@ -1229,6 +1797,14 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $isArray = false;
             $is2DArray = false;
             //$code = ""+$content;
+            String val = $content.substring(1, $content.length() - 1); // Remove the surrounding double quotes
+
+            if($register.equals("unk")){
+                $register = "a0"; //default register
+            }
+
+            $finReg = $register;
+            $code = generateStringConstant($finReg, val);
         }
     | DNT
         {
@@ -1258,7 +1834,51 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
                 $arrayValues = currentId.arrayValues;
                 $array2DValues = currentId.array2DValues;
             }
-            $code = generateLoadId($register, id);
+
+            if($register.equals("unk")){
+                if($type.equals("flt")){
+                    $register = "fa0"; //default float register
+                } else {
+                    $register = "a0"; //default register
+                }
+            } else if ($register.equals("ft0")){
+                if($type.equals("flt")){
+                    $register = "fa0"; //default float register
+                } else {
+                    $register = "a0"; //default register
+                }
+            } else if ($register.equals("ft1")){
+                if($type.equals("flt")){
+                    $register = "fa1"; //default float register
+                } else {
+                    $register = "a0"; //default register
+                }
+            } else if ($register.equals("fa0")){
+                if(!$type.equals("flt")){
+                    $register = "a0"; //default register
+                }
+            } else if ($register.equals("fa1")){
+                if(!$type.equals("flt")){
+                    $register = "a0"; //default register
+                }
+            } else if ($register.equals("a0")){
+                if($type.equals("flt")){
+                    $register = "fa0"; //default float register
+                }
+            } else if ($register.equals("a1")){
+                if($type.equals("flt")){
+                    $register = "fa0"; //default float register
+                }
+            } else if ($register.equals("1") || $register.equals("2") || $register.equals("3") || $register.equals("4") || $register.equals("5") || $register.equals("6") || $register.equals("7")){
+                if($type.equals("flt")){
+                    $register = "fa" + $register; //default float register
+                } else {
+                    $register = "a" + $register; //default register
+                }
+            }
+
+            $finReg = $register;
+            $code = generateLoadId($finReg, id);
         }
     | arrayAccess
         {
@@ -1281,6 +1901,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $arrayValues = $expr.arrayValues;
             $array2DValues = $expr.array2DValues;
             $code = $expr.code ;
+            $finReg = $expr.finReg;
         }
     | functCall
         {

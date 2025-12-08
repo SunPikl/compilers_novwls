@@ -186,6 +186,37 @@ public class NoVwlsLexer extends Lexer {
 	    }
 
 	    //***code gen***
+	    //registers
+	    //register trackers
+	    int nextIntRegister = 1;
+	    int nextFloatRegister = 1;
+	    int nextTotRegister = 1;
+
+	    String getNewRegister(String type) {
+	        String ret;
+	        // if (type.equals("nt")) ret = "" + nextIntRegister++;
+	        // else ret = "" + nextFloatRegister++;
+	        ret = "" + nextTotRegister;
+
+	        // if(nextIntRegister > 7 || nextFloatRegister > 7){
+	        //     System.err.println("error: ran out of registers");
+	        //     System.exit(1);
+	        // } else if(nextTotRegister > 7) {
+	        //     System.err.println("error: ran out of registers");
+	        //     System.exit(1);
+	        // }
+	        nextTotRegister++;
+
+	        return ret;
+	    }
+
+	    // Reset registers at the start of a new expression
+	    void resetRegisters() {
+	        nextIntRegister = 1;
+	        nextFloatRegister = 1;
+	        nextTotRegister = 1;
+	    }
+
 	    //code storage
 	    StringBuilder text_sb = new StringBuilder(); // Stores text segment
 	    Identifier writeTo = null;
@@ -270,10 +301,58 @@ public class NoVwlsLexer extends Lexer {
 	        return label;
 	    }
 
+	    String addIntValue(int x) {
+	        String label = CONST_PREFIX+data_count;
+	        data_count++;
+	        data_emit(label + ":    .word " + x);
+	        return label;
+	    }
+
+	    String addStringValue(String x) {
+	        String label = CONST_PREFIX+data_count;
+	        data_count++;
+	        data_emit(label + ":    .asciz \"" + x + "\"");
+	        return label;
+	    }
+
+	    String addBoolValue(int x) {
+	        String label = CONST_PREFIX+data_count;
+	        data_count++;
+	        data_emit(label + ":    .byte " + x);
+	        return label;
+	    }
+
+	    String addCharValue(char x) {
+	        String label = CONST_PREFIX+data_count;
+	        data_count++;
+	        data_emit(label + ":    .byte " + x);
+	        return label;
+	    }
+
 	    void addSymbolsToData(SymbolTable table) {
 	        table.table.forEach((id, symbol) -> {  { 
 	            String label = ID_PREFIX + id;
-	            data_emit(label + ":    .double 0.0");
+	            try{
+	                if(symbol.type.equals("nt")){
+	                    data_emit(label + ":    .word 0");
+	                    return;
+	                } else if(symbol.type.equals("flt")){
+	                    data_emit(label + ":    .double 0.0");
+	                    return;
+	                } else if(symbol.type.equals("strng")){
+	                    data_emit(label + ":    .asciz \"\""); 
+	                    return;
+	                } else if(symbol.type.equals("chr")){
+	                    data_emit(label + ":    .byte 0");
+	                    return;
+	                } else if(symbol.type.equals("bl")){
+	                    data_emit(label + ":    .byte 0");
+	                    return;
+	                }
+	            } catch (Exception e){
+	                error(null, "unknown type for symbol '" + id + "' in data segment");
+	            }
+	            
 	        }});
 	    }
 
@@ -288,12 +367,55 @@ public class NoVwlsLexer extends Lexer {
 	        return code;
 	    }
 
+	    StringBuilder generateIntConstant(String register, int value) {
+	        StringBuilder code = new StringBuilder();
+	        String label = addIntValue(value);
+	        emit(code, "    # Loading constant " + value + " into register " + register); 
+	        emit(code, "    la " + "t0," + label); 
+	        emit(code, "    lw " + register + ", 0(t0)");
+	        emit(code, "    ");
+	        return code;
+	    }
+
+	    StringBuilder generateStringConstant(String register, String value) {
+	        StringBuilder code = new StringBuilder();
+	        String label = addStringValue(value);
+	        emit(code, "    # Loading constant " + value + " into register " + register); 
+	        emit(code, "    la " + "a0," + label); 
+	        emit(code, "    ");
+	        return code;
+	    }
+
+	    StringBuilder generateCharConstant(String register, char value) {
+	        StringBuilder code = new StringBuilder();
+	        String label = addCharValue(value);
+	        emit(code, "    # Loading constant " + value + " into register " + register); 
+	        emit(code, "    la " + "t0," + label); 
+	        emit(code, "    lw " + register + ", 0(t0)");
+	        emit(code, "    ");
+	        return code;
+	    }
+
+	    StringBuilder generateBoolConstant(String register, int value) {
+	        StringBuilder code = new StringBuilder();
+	        String label = addBoolValue(value);
+	        emit(code, "    # Loading constant " + value + " into register " + register); 
+	        emit(code, "    la " + "t0," + label); 
+	        emit(code, "    lw " + register + ", 0(t0)");
+	        emit(code, "    ");
+	        return code;
+	    }
+
 	    StringBuilder generateLoadId(String register, String id) {
 	        StringBuilder code = new StringBuilder();
 	        String label = ID_PREFIX + id;
 	        emit(code, "    # Loading id " + id + " into register " + register); 
 	        emit(code, "    la " + "t0," + label); 
-	        emit(code, "    fld " + register + ", 0(t0)");
+	        if(register.startsWith("f")) {
+	            emit(code, "    fld " + register + ", 0(t0)");
+	        } else {
+	            emit(code, "    lw " + register + ", 0(t0)");
+	        }
 	        emit(code, "    ");
 	        System.out.println("DEBUG: load id " + id + " into register " + register);
 	        return code;
@@ -306,7 +428,11 @@ public class NoVwlsLexer extends Lexer {
 
 	        emit(rhsJavaCode, "    # Assigning to variable " + name);
 	        emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
-	        emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+	        if(register.startsWith("f")) {
+	            emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+	        } else {
+	            emit(rhsJavaCode, "    sw " + register + ", 0(" + tempRegister + ")");
+	        }
 	        emit(rhsJavaCode, "    ");
 	        System.out.println("DEBUG: assign to " + name + " from register " + register);
 	    }
@@ -322,6 +448,34 @@ public class NoVwlsLexer extends Lexer {
 	        }
 	    }
 
+	    void generateReadInt(StringBuilder code, String register) {
+	        emit(code, "    li    a7, 5");  // a7=5 is for reading floats
+	        emit(code, "    ecall");        // invoke the system call
+	        if (!register.equals("a0")) {
+	            // Transfer the results over to register from ft0.
+	            emit(code, "    fmv.d " + register + ",a0");
+	        }
+	    }
+
+	    void generateReadString(StringBuilder code, String register) {
+	        emit(code, "    li    a7, 8");  // a7=8 is for reading strings
+	        emit(code, "    ecall");        // invoke the system call
+	        if (!register.equals("a0")) {
+	            // Transfer the results over to register from a0.
+	            emit(code, "    fmv.d " + register + ",a0");
+	        }
+	    }
+
+	    void generateReadChar(StringBuilder code, String register) {
+	        emit(code, "    li    a7, 12");  // a7=12 is for reading chars
+	        emit(code, "    ecall");        // invoke the system call
+	        if (!register.equals("a0")) {
+	            // Transfer the results over to register from a0.
+	            emit(code, "    fmv.d " + register + ",a0");
+	        }
+	    }
+
+
 	    //generate to print
 	    void generatePrintDouble(StringBuilder code, String register) {
 	        if (!register.equals("fa0")) {
@@ -331,6 +485,52 @@ public class NoVwlsLexer extends Lexer {
 	        }
 	        emit(code, "    # Emitting print double"); 
 	        emit(code, "    li    a7, 3");  // a7=3 is for printing doubles
+	        emit(code, "    ecall");        // invoke the system call
+	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        emit(code, "    ecall");        // invoke the system call
+	        emit(code, "    ");
+	    }
+
+	    void generatePrintInt(StringBuilder code, String register) {
+	        if (!register.equals("a0")) {
+	            // Need to transfer the value in register to fa0
+	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+	            emit(code, "    fmv.d a0," + register);
+	        }
+	        emit(code, "    # Emitting print int"); 
+	        emit(code, "    li    a7, 1");  // a7=1 is for printing doubles
+	        emit(code, "    ecall");        // invoke the system call
+	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        emit(code, "    ecall");        // invoke the system call
+	        emit(code, "    ");
+	    }
+
+	    void generatePrintString(StringBuilder code, String register) {
+	        if (!register.equals("a0")) {
+	            // Need to transfer the value in register to fa0
+	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+	            emit(code, "    fmv.d a0," + register);
+	        }
+	        emit(code, "    # Emitting print string"); 
+	        emit(code, "    li    a7, 4");  // a7=4 is for printing strings
+	        emit(code, "    ecall");        // invoke the system call
+	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        emit(code, "    ecall");        // invoke the system call
+	        emit(code, "    ");
+	    }
+
+	    void generatePrintBool(StringBuilder code, String register) {
+	        if (!register.equals("a0")) {
+	            // Need to transfer the value in register to fa0
+	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+	            emit(code, "    fmv.d a0," + register);
+	        }
+	        System.out.println("printing bool");
+	        emit(code, "    # Emitting print bool"); 
+	        emit(code, "    li    a7, 1");  // a7=5 is for printing bool values
 	        emit(code, "    ecall");        // invoke the system call
 	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
 	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
