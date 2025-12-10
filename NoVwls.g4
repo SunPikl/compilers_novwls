@@ -160,6 +160,7 @@ grammar NoVwls;
     Identifier writeTo = null;
     StringBuilder data_sb = new StringBuilder(); //data segment
     int data_count = 0;
+    StringBuilder function_sb = new StringBuilder();
 
     void emit(StringBuilder sb, String s, boolean newLine) { 
         sb.append(s);
@@ -168,6 +169,7 @@ grammar NoVwls;
     void emit(StringBuilder sb, String s) { emit(sb, s, true); }
     void data_emit(String s) { emit(data_sb, s); }
     void text_emit(String s) { emit(text_sb, s); } 
+    void function_emit(String s) { emit(function_sb, s); }
 
     //make file 
     final String ASSEMBLY_FILE = "code.s";
@@ -181,6 +183,7 @@ grammar NoVwls;
     data_emit("# Auto-generated code. Do not edit.");
     data_emit("# =================================");
     data_emit("    .data");
+    data_emit("  input_buffer: .space 128 #store string to load");
 
     text_emit("    .text");
     text_emit("main: ");
@@ -216,7 +219,7 @@ grammar NoVwls;
                         }
                     }
                 }
-                //emit(" ) { \n", null);
+                //emit(" )  \n", null);
 
                 //open scanner
                 //emit(" Scanner in = new Scanner(System.in);\n", null);
@@ -225,7 +228,7 @@ grammar NoVwls;
                 //emit(object.storeFunct.toString(), null);
 
                 //finish
-                //emit("}\n", null);
+                //emit("\n", null);
             }
         }
 
@@ -263,7 +266,7 @@ grammar NoVwls;
     String addCharValue(char x) {
         String label = CONST_PREFIX+data_count;
         data_count++;
-        data_emit(label + ":    .byte " + x);
+        data_emit(label + ":    .byte '" + x + "'");
         return label;
     }
 
@@ -278,7 +281,7 @@ grammar NoVwls;
                     data_emit(label + ":    .double 0.0");
                     return;
                 } else if(symbol.type.equals("strng")){
-                    data_emit(label + ":    .asciz \"\""); 
+                    data_emit(label + ":    .word 0"); 
                     return;
                 } else if(symbol.type.equals("chr")){
                     data_emit(label + ":    .byte 0");
@@ -319,7 +322,7 @@ grammar NoVwls;
         StringBuilder code = new StringBuilder();
         String label = addStringValue(value);
         emit(code, "    # Loading constant " + value + " into register " + register); 
-        emit(code, "    la " + "a0," + label); 
+        emit(code, "    la " + register + "," + label); 
         emit(code, "    ");
         return code;
     }
@@ -329,7 +332,7 @@ grammar NoVwls;
         String label = addCharValue(value);
         emit(code, "    # Loading constant " + value + " into register " + register); 
         emit(code, "    la " + "t0," + label); 
-        emit(code, "    lw " + register + ", 0(t0)");
+        emit(code, "    lb " + register + ", 0(t0)");
         emit(code, "    ");
         return code;
     }
@@ -344,13 +347,15 @@ grammar NoVwls;
         return code;
     }
 
-    StringBuilder generateLoadId(String register, String id) {
+    StringBuilder generateLoadId(String register, String id, String type) {
         StringBuilder code = new StringBuilder();
         String label = ID_PREFIX + id;
         emit(code, "    # Loading id " + id + " into register " + register); 
         emit(code, "    la " + "t0," + label); 
         if(register.startsWith("f")) {
             emit(code, "    fld " + register + ", 0(t0)");
+        } else if(type.equals("chr")){
+            emit(code, "    lb " + register + ", 0(t0)");
         } else {
             emit(code, "    lw " + register + ", 0(t0)");
         }
@@ -360,7 +365,7 @@ grammar NoVwls;
     }
 
     //generate assignments
-    void generateAssign(String name, StringBuilder rhsJavaCode, String register) {
+    void generateAssign(String name, StringBuilder rhsJavaCode, String register, String type) {
         // tempRegister is either t0 or t1 (if t0 is taken)
         String tempRegister = register.equals("t0") ? "t1" : "t0";
 
@@ -368,6 +373,8 @@ grammar NoVwls;
         emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
         if(register.startsWith("f")) {
             emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+        } else if(type.equals("chr")){
+            emit(rhsJavaCode, "    sb " + register + ", 0(" + tempRegister + ")");
         } else {
             emit(rhsJavaCode, "    sw " + register + ", 0(" + tempRegister + ")");
         }
@@ -391,16 +398,18 @@ grammar NoVwls;
         emit(code, "    ecall");        // invoke the system call
         if (!register.equals("a0")) {
             // Transfer the results over to register from ft0.
-            emit(code, "    fmv.d " + register + ",a0");
+            emit(code, "    mv  " + register + ",a0");
         }
     }
 
     void generateReadString(StringBuilder code, String register) {
+        emit(code, "    la    a0, input_buffer");
+        emit(code, "    li    a1, 128");
         emit(code, "    li    a7, 8");  // a7=8 is for reading strings
         emit(code, "    ecall");        // invoke the system call
         if (!register.equals("a0")) {
             // Transfer the results over to register from a0.
-            emit(code, "    fmv.d " + register + ",a0");
+            emit(code, "    mv  " + register + ",a0");
         }
     }
 
@@ -409,7 +418,7 @@ grammar NoVwls;
         emit(code, "    ecall");        // invoke the system call
         if (!register.equals("a0")) {
             // Transfer the results over to register from a0.
-            emit(code, "    fmv.d " + register + ",a0");
+            emit(code, "    mv  " + register + ",a0");
         }
     }
 
@@ -424,56 +433,71 @@ grammar NoVwls;
         emit(code, "    # Emitting print double"); 
         emit(code, "    li    a7, 3");  // a7=3 is for printing doubles
         emit(code, "    ecall");        // invoke the system call
-        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-        emit(code, "    ecall");        // invoke the system call
-        emit(code, "    ");
+        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        // emit(code, "    ecall");        // invoke the system call
+        // emit(code, "    ");
     }
 
     void generatePrintInt(StringBuilder code, String register) {
         if (!register.equals("a0")) {
             // Need to transfer the value in register to fa0
             //    e.g. fmv.d fa0, fa1   fa0 = fa1
-            emit(code, "    fmv.d a0," + register);
+            emit(code, "    mv a0," + register);
         }
         emit(code, "    # Emitting print int"); 
         emit(code, "    li    a7, 1");  // a7=1 is for printing doubles
         emit(code, "    ecall");        // invoke the system call
-        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-        emit(code, "    ecall");        // invoke the system call
-        emit(code, "    ");
+        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        // emit(code, "    ecall");        // invoke the system call
+        // emit(code, "    ");
     }
 
     void generatePrintString(StringBuilder code, String register) {
-        if (!register.equals("a0")) {
+        if(!register.equals("a0")) {
             // Need to transfer the value in register to fa0
             //    e.g. fmv.d fa0, fa1   fa0 = fa1
-            emit(code, "    fmv.d a0," + register);
+            emit(code, "    mv a0," + register);
         }
         emit(code, "    # Emitting print string"); 
         emit(code, "    li    a7, 4");  // a7=4 is for printing strings
         emit(code, "    ecall");        // invoke the system call
-        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        // emit(code, "    ecall");        // invoke the system call
+        // emit(code, "    ");
+    }
+
+    void generatePrintChar(StringBuilder code, String register) {
+        if (!register.equals("a0")) {
+            // Need to transfer the value in register to fa0
+            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+            emit(code, "    mv a0," + register);
+        }
+        emit(code, "    # Emitting print char"); 
+        emit(code, "    li    a7, 11");  // a7=4 is for printing chars
         emit(code, "    ecall");        // invoke the system call
-        emit(code, "    ");
+        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        // emit(code, "    ecall");        // invoke the system call
+        // emit(code, "    ");
     }
 
     void generatePrintBool(StringBuilder code, String register) {
         if (!register.equals("a0")) {
             // Need to transfer the value in register to fa0
             //    e.g. fmv.d fa0, fa1   fa0 = fa1
-            emit(code, "    fmv.d a0," + register);
+            emit(code, "     mv  a0," + register);
         }
         System.out.println("printing bool");
         emit(code, "    # Emitting print bool"); 
         emit(code, "    li    a7, 1");  // a7=5 is for printing bool values
         emit(code, "    ecall");        // invoke the system call
-        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-        emit(code, "    ecall");        // invoke the system call
-        emit(code, "    ");
+        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+        // emit(code, "    ecall");        // invoke the system call
+        // emit(code, "    ");
     }
 
     /// Write the generated Java to file.
@@ -481,6 +505,7 @@ grammar NoVwls;
         try (PrintWriter pw = new PrintWriter(ASSEMBLY_FILE, "UTF-8")) {
             pw.print(data_sb.toString());
             pw.print(text_sb.toString());
+            pw.print(function_sb.toString());
         } catch (Exception e) {
             System.err.println("error: failed to write to " + ASSEMBLY_FILE + ": " + e.getMessage());
         }
@@ -582,7 +607,7 @@ stmt returns [StringBuilder code] :
     | loopStmt { $code = $loopStmt.code; }
     | breakStmt 
     | functCall SCOLN 
-    | functDefine 
+//    | functDefine 
     | comment 
     | arrayDeclWithSize;
 
@@ -733,12 +758,12 @@ assignStmt returns [StringBuilder code]:
         
         if (preexistingLHS) {
             // Just a new assignment to an existing variable
-            generateAssign(currLHS, $rhs.code, $rhs.finReg);
+            generateAssign(currLHS, $rhs.code, $rhs.finReg, currId.type);
         } else {
             // A new variable is being "declared"
             //Identifier newId = new Identifier(currLHS);
             mainTable.table.put(newId.id, newId);
-            generateAssign(newId.id, $rhs.code, $rhs.finReg);
+            generateAssign(newId.id, $rhs.code, $rhs.finReg, newId.type);
         }
 
         $code = $rhs.code;
@@ -906,37 +931,41 @@ arrayElement returns [boolean hasKnownValue, Object elementValue, String element
 
 printStmt returns [StringBuilder code]: 
     { 
-        String register = "unk"; 
+        String register = getNewRegister("strng"); 
     }
     KW_PRNT '(' first=printExpr [register]
     {
         //emit("    System.out.print(String.valueOf(" + $first.code  + "));\n", writeTo);
         $code = $first.code;  // Start with the code for the expression
         if($first.type.equals("nt")){
-            generatePrintInt($code, "a0");
+            generatePrintInt($code, $first.finReg);
         } else if($first.type.equals("flt")){
-            generatePrintDouble($code, "fa0");
+            generatePrintDouble($code, $first.finReg);
         } else if($first.type.equals("strng")){
-            generatePrintString($code, "a0");
+            generatePrintString($code, $first.finReg);
         } else if($first.type.equals("chr")){
-            generatePrintString($code, "a0");
+            generatePrintChar($code, $first.finReg);
         } else if($first.type.equals("bl")){
-            generatePrintBool($code, "a0");
+            generatePrintBool($code, $first.finReg);
         }
     }
-    (CMM more=printExpr[register]
+    (CMM 
     {
-        $code = $more.code;  // Start with the code for the expression
-        if($first.type.equals("nt")){
-            generatePrintInt($code, "a0");
-        } else if($first.type.equals("flt")){
-            generatePrintDouble($code, "fa0");
-        } else if($first.type.equals("strng")){
-            generatePrintString($code, "a0");
-        } else if($first.type.equals("chr")){
-            generatePrintString($code, "a0");
-        } else if($first.type.equals("bl")){
-            generatePrintBool($code, "a0");
+        register = getNewRegister("strng");
+    }
+    more=printExpr[register]
+    {
+        $code.append($more.code);  // Start with the code for the expression
+        if($more.type.equals("nt")){
+            generatePrintInt($code, $more.finReg);
+        } else if($more.type.equals("flt")){
+            generatePrintDouble($code, $more.finReg);
+        } else if($more.type.equals("strng")){
+            generatePrintString($code, $more.finReg);
+        } else if($more.type.equals("chr")){
+            generatePrintString($code, $more.finReg);
+        } else if($more.type.equals("bl")){
+            generatePrintBool($code, $more.finReg);
         }
         
         //emit("    System.out.print(String.valueOf(" + $more.code  + "));\n", writeTo);
@@ -944,16 +973,21 @@ printStmt returns [StringBuilder code]:
     
     )* ')' SCOLN 
     { 
-
+        emit($code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+        emit($code, "    li    a7, 11"); // a7=11 is for printing a character
+        emit($code, "    ecall");        // invoke the system call
+        emit($code, "    ");
         //emit("    System.out.println(" + ");\n", writeTo);
+        resetRegisters();
     } ;
 
-printExpr [String register] returns [StringBuilder code, String type]: 
+printExpr [String register] returns [StringBuilder code, String type, String finReg]: 
     expr [register]
     { 
         //emit("    System.out.print(" + $expr.code  + ");\n", writeTo);
         $code = $expr.code;
         $type = $expr.type;
+        $finReg = $expr.finReg;
 
         if($expr.type == null){
             System.err.println("Error: cannot print null types");
@@ -1034,56 +1068,60 @@ printExpr [String register] returns [StringBuilder code, String type]:
     };
 
 compareStmt returns [StringBuilder code] : 
-        KW_F '(' comp=comparison["a0"] ')'
-        {
-            String ifTrue = generateLabel("if_true");
-            String ifEnd = generateLabel("if_end");
-            
-            // Start new code block for if statement
-            StringBuilder ifCode = startCodeBlock();
-            
-            // Append comparison code
-            ifCode.append($comp.code.toString());
-            
-            // Branch if false (0) to end (skip then block)
-            emit(ifCode, "    beqz a0, " + ifEnd, true);
-            emit(ifCode, ifTrue + ":", true);
-        }
-        thenBlock=blockStmt
-        {
-            StringBuilder currentBlock = getCurrentBlock();
-        }
-        (KW_LS
-        {
-            // Else clause exists
-            String elseLabel = generateLabel("else");
-            StringBuilder currentBlock = getCurrentBlock();
-            
-            // Jump to end of if (skip else)
-            emit(currentBlock, "    j " + ifEnd, true);
-            emit(currentBlock, elseLabel + ":", true);
-        }
-        elseBlock=blockStmt 
-        {
-            // End of else block
+    KW_F '(' comp=comparison["a0"] ')'
+    {
+        String ifTrue = generateLabel("if_true");
+        String ifEnd = generateLabel("if_end");
+        
+        // Start new code block for if statement
+        StringBuilder ifCode = startCodeBlock();
+        
+        // Append comparison code
+        ifCode.append($comp.code.toString());
+        
+        // Branch if false (0) to end (skip then block)
+        emit(ifCode, "    beqz a0, " + ifEnd, true);
+        emit(ifCode, ifTrue + ":", true);
+    }
+    thenBlock=blockStmt
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        
+        // Check if there's an else clause
+        boolean hasElse = false; // We'll track this
+    }
+    (KW_LS
+    {
+        // Else clause exists
+        String elseLabel = generateLabel("else");
+        StringBuilder currentBlock = getCurrentBlock();
+        
+        // Jump to end of if (skip else)
+        emit(currentBlock, "    j " + ifEnd, true);
+        emit(currentBlock, elseLabel + ":", true);
+        hasElse = true;
+    }
+    elseBlock=blockStmt 
+    {
+        // End of else block
+        StringBuilder currentBlock = getCurrentBlock();
+        emit(currentBlock, ifEnd + ":", true);
+        
+        // End the code block and get the result
+        $code = new StringBuilder(endCodeBlock());
+    }
+    )?
+    {
+        // Handle case with no else clause
+        if (!hasElse) {
             StringBuilder currentBlock = getCurrentBlock();
             emit(currentBlock, ifEnd + ":", true);
             
             // End the code block and get the result
             $code = new StringBuilder(endCodeBlock());
         }
-        )?
-        {
-            // Handle case with no else clause
-            if ($code == null) {
-                StringBuilder currentBlock = getCurrentBlock();
-                emit(currentBlock, ifEnd + ":", true);
-                
-                // End the code block and get the result
-                $code = new StringBuilder(endCodeBlock());
-            }
-        }
-        ;
+    }
+    ;
 
 functStmt : KW_FNCTN d=dataType a=DNT 
     {
@@ -1110,7 +1148,9 @@ functStmt : KW_FNCTN d=dataType a=DNT
                 error($a , "function '" + $a.getText() + "' definition does not match declaration");
             }
         }
-        
+
+        function_emit($a.text + ":");
+        text_emit("    .globl " + $a.text);
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
     }
@@ -1129,7 +1169,6 @@ functStmt : KW_FNCTN d=dataType a=DNT
         if ($dt.type.endsWith("[][]")) {
             firstP.is2DArray = true;
         }
-
         //add to list
         function.parameters.add(firstP);
 
@@ -1220,7 +1259,17 @@ functStmt : KW_FNCTN d=dataType a=DNT
         
         
     }
-    stmt* KW_RTN factor["fa0"] SCOLN '}'
+    stmt*
+    {
+        if($stmt.code != null){
+            function_emit($stmt.code.toString());
+        }
+        
+    } 
+    KW_RTN
+    {
+        function_emit("    ret");
+    } factor["fa0"] SCOLN '}'
     {
         //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
         String returnVal = "String ";
@@ -1238,7 +1287,6 @@ functStmt : KW_FNCTN d=dataType a=DNT
             //emit(" in.close();\n", writeTo);
             //emit("return " + $factor.code + "; \n", writeTo);  
         }
-
         //end scope
         scopeStack.pop();
         
@@ -1284,7 +1332,7 @@ whileLoop returns [StringBuilder code] :
     body=blockStmt
     {
         // Get the loop code block
-        StringBuilder loopCode = getCurrentBlock();
+        loopCode = getCurrentBlock();
         
         // Add jump back to start
         emit(loopCode, "    j " + loopStart, true);
@@ -1321,13 +1369,13 @@ forLoop returns [StringBuilder code] :
     }
     body=blockStmt
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, loopIncr + ":", true);
         emit(currentBlock, "    # Loop increment", true);
     }
     (incr=forLoopInc)?      // increment
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         if ($incr.code != null) {
             currentBlock.append($incr.code.toString());
         }
@@ -1335,19 +1383,19 @@ forLoop returns [StringBuilder code] :
     }
     R_PRNTH 
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, loopCond + ":", true);
     }
     comp=comparison["a0"] SCOLN         // condition 
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         currentBlock.append($comp.code.toString());
         emit(currentBlock, "    bnez a0, " + loopStart, true);
         emit(currentBlock, "    j " + loopEnd, true);
         emit(currentBlock, "    # Condition check done", true);
     }
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, loopEnd + ":", true);
         emit(currentBlock, "    # End for loop", true);
         
@@ -1949,6 +1997,16 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
 
             if($register.equals("unk")){
                 $register = "a0"; //default register
+            } else if ($register.equals("ft0")){
+                $register = "a0"; //default register
+            } else if ($register.equals("ft1")){
+                $register = "a0"; //default register
+            } else if ($register.equals("fa0")){
+                $register = "a0"; //default register
+            } else if ($register.equals("fa1")){
+                $register = "a0"; //default register
+            } else if ($register.equals("1") || $register.equals("2") || $register.equals("3") || $register.equals("4") || $register.equals("5") || $register.equals("6") || $register.equals("7")){
+                $register = "a" + $register; //default register
             }
 
             $finReg = $register;
@@ -1965,7 +2023,18 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
 
             if($register.equals("unk")){
                 $register = "a0"; //default register
+            } else if ($register.equals("ft0")){
+                $register = "a0"; //default register
+            } else if ($register.equals("ft1")){
+                $register = "a0"; //default register
+            } else if ($register.equals("fa0")){
+                $register = "a0"; //default register
+            } else if ($register.equals("fa1")){
+                $register = "a0"; //default register
+            } else if ($register.equals("1") || $register.equals("2") || $register.equals("3") || $register.equals("4") || $register.equals("5") || $register.equals("6") || $register.equals("7")){
+                $register = "a" + $register; //default register
             }
+
 
             $finReg = $register;
             $code = generateCharConstant($finReg, val);
@@ -1981,7 +2050,18 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
 
             if($register.equals("unk")){
                 $register = "a0"; //default register
+            } else if ($register.equals("ft0")){
+                $register = "a0"; //default register
+            } else if ($register.equals("ft1")){
+                $register = "a0"; //default register
+            } else if ($register.equals("fa0")){
+                $register = "a0"; //default register
+            } else if ($register.equals("fa1")){
+                $register = "a0"; //default register
+            } else if ($register.equals("1") || $register.equals("2") || $register.equals("3") || $register.equals("4") || $register.equals("5") || $register.equals("6") || $register.equals("7")){
+                $register = "a" + $register; //default register
             }
+
 
             $finReg = $register;
             $code = generateStringConstant($finReg, val);
@@ -2058,7 +2138,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             }
 
             $finReg = $register;
-            $code = generateLoadId($finReg, id);
+            $code = generateLoadId($finReg, id, $type);
         }
     | arrayAccess
         {
@@ -2102,6 +2182,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
 functCall returns [boolean hasKnownValue, String type, float value, String content, String code]: 
     DNT '('
     {
+        text_emit("    call "+$DNT.text);
         String id = $DNT.getText();
         used.add(id);
         Identifier currentId = null;

@@ -170,6 +170,42 @@ public class NoVwlsLexer extends Lexer {
 	        diagnostics.add("line " + t.getLine() + ":" + t.getCharPositionInLine() + " " + msg);
 	    }
 
+	     //Code Block Management for Loops/Conditionals
+	    Stack<StringBuilder> codeBlockStack = new Stack<>();
+	    int labelCounter = 0;
+
+	    // Method to start a new code block
+	    StringBuilder startCodeBlock() {
+	        StringBuilder block = new StringBuilder();
+	        codeBlockStack.push(block);
+	        return block;
+	    }
+
+	    // Method to end a code block and get its contents
+	    String endCodeBlock() {
+	        if (!codeBlockStack.isEmpty()) {
+	            return codeBlockStack.pop().toString();
+	        }
+	        return "";
+	    }
+
+	    // Method to get current code block
+	    StringBuilder getCurrentBlock() {
+	        if (!codeBlockStack.isEmpty()) {
+	            return codeBlockStack.peek();
+	        }
+	        return text_sb; // Default to main text segment
+	    }
+
+	    // Generate unique labels
+	    String generateLabel(String prefix) {
+	        return prefix + "_" + (labelCounter++);
+	    }
+
+	    void emitLabel(StringBuilder sb, String label) {
+	        emit(sb, label + ":", true);
+	    }
+
 	    int printDiagnostics() {
 	        int numErrors = 0;
 	        for (String v : assigned) {
@@ -222,6 +258,7 @@ public class NoVwlsLexer extends Lexer {
 	    Identifier writeTo = null;
 	    StringBuilder data_sb = new StringBuilder(); //data segment
 	    int data_count = 0;
+	    StringBuilder function_sb = new StringBuilder();
 
 	    void emit(StringBuilder sb, String s, boolean newLine) { 
 	        sb.append(s);
@@ -230,6 +267,7 @@ public class NoVwlsLexer extends Lexer {
 	    void emit(StringBuilder sb, String s) { emit(sb, s, true); }
 	    void data_emit(String s) { emit(data_sb, s); }
 	    void text_emit(String s) { emit(text_sb, s); } 
+	    void function_emit(String s) { emit(function_sb, s); }
 
 	    //make file 
 	    final String ASSEMBLY_FILE = "code.s";
@@ -243,6 +281,7 @@ public class NoVwlsLexer extends Lexer {
 	    data_emit("# Auto-generated code. Do not edit.");
 	    data_emit("# =================================");
 	    data_emit("    .data");
+	    data_emit("  input_buffer: .space 128 #store string to load");
 
 	    text_emit("    .text");
 	    text_emit("main: ");
@@ -278,7 +317,7 @@ public class NoVwlsLexer extends Lexer {
 	                        }
 	                    }
 	                }
-	                //emit(" ) { \n", null);
+	                //emit(" )  \n", null);
 
 	                //open scanner
 	                //emit(" Scanner in = new Scanner(System.in);\n", null);
@@ -287,7 +326,7 @@ public class NoVwlsLexer extends Lexer {
 	                //emit(object.storeFunct.toString(), null);
 
 	                //finish
-	                //emit("}\n", null);
+	                //emit("\n", null);
 	            }
 	        }
 
@@ -325,7 +364,7 @@ public class NoVwlsLexer extends Lexer {
 	    String addCharValue(char x) {
 	        String label = CONST_PREFIX+data_count;
 	        data_count++;
-	        data_emit(label + ":    .byte " + x);
+	        data_emit(label + ":    .byte '" + x + "'");
 	        return label;
 	    }
 
@@ -340,7 +379,7 @@ public class NoVwlsLexer extends Lexer {
 	                    data_emit(label + ":    .double 0.0");
 	                    return;
 	                } else if(symbol.type.equals("strng")){
-	                    data_emit(label + ":    .asciz \"\""); 
+	                    data_emit(label + ":    .word 0"); 
 	                    return;
 	                } else if(symbol.type.equals("chr")){
 	                    data_emit(label + ":    .byte 0");
@@ -381,7 +420,7 @@ public class NoVwlsLexer extends Lexer {
 	        StringBuilder code = new StringBuilder();
 	        String label = addStringValue(value);
 	        emit(code, "    # Loading constant " + value + " into register " + register); 
-	        emit(code, "    la " + "a0," + label); 
+	        emit(code, "    la " + register + "," + label); 
 	        emit(code, "    ");
 	        return code;
 	    }
@@ -391,7 +430,7 @@ public class NoVwlsLexer extends Lexer {
 	        String label = addCharValue(value);
 	        emit(code, "    # Loading constant " + value + " into register " + register); 
 	        emit(code, "    la " + "t0," + label); 
-	        emit(code, "    lw " + register + ", 0(t0)");
+	        emit(code, "    lb " + register + ", 0(t0)");
 	        emit(code, "    ");
 	        return code;
 	    }
@@ -406,13 +445,15 @@ public class NoVwlsLexer extends Lexer {
 	        return code;
 	    }
 
-	    StringBuilder generateLoadId(String register, String id) {
+	    StringBuilder generateLoadId(String register, String id, String type) {
 	        StringBuilder code = new StringBuilder();
 	        String label = ID_PREFIX + id;
 	        emit(code, "    # Loading id " + id + " into register " + register); 
 	        emit(code, "    la " + "t0," + label); 
 	        if(register.startsWith("f")) {
 	            emit(code, "    fld " + register + ", 0(t0)");
+	        } else if(type.equals("chr")){
+	            emit(code, "    lb " + register + ", 0(t0)");
 	        } else {
 	            emit(code, "    lw " + register + ", 0(t0)");
 	        }
@@ -422,7 +463,7 @@ public class NoVwlsLexer extends Lexer {
 	    }
 
 	    //generate assignments
-	    void generateAssign(String name, StringBuilder rhsJavaCode, String register) {
+	    void generateAssign(String name, StringBuilder rhsJavaCode, String register, String type) {
 	        // tempRegister is either t0 or t1 (if t0 is taken)
 	        String tempRegister = register.equals("t0") ? "t1" : "t0";
 
@@ -430,6 +471,8 @@ public class NoVwlsLexer extends Lexer {
 	        emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
 	        if(register.startsWith("f")) {
 	            emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+	        } else if(type.equals("chr")){
+	            emit(rhsJavaCode, "    sb " + register + ", 0(" + tempRegister + ")");
 	        } else {
 	            emit(rhsJavaCode, "    sw " + register + ", 0(" + tempRegister + ")");
 	        }
@@ -453,16 +496,18 @@ public class NoVwlsLexer extends Lexer {
 	        emit(code, "    ecall");        // invoke the system call
 	        if (!register.equals("a0")) {
 	            // Transfer the results over to register from ft0.
-	            emit(code, "    fmv.d " + register + ",a0");
+	            emit(code, "    mv  " + register + ",a0");
 	        }
 	    }
 
 	    void generateReadString(StringBuilder code, String register) {
+	        emit(code, "    la    a0, input_buffer");
+	        emit(code, "    li    a1, 128");
 	        emit(code, "    li    a7, 8");  // a7=8 is for reading strings
 	        emit(code, "    ecall");        // invoke the system call
 	        if (!register.equals("a0")) {
 	            // Transfer the results over to register from a0.
-	            emit(code, "    fmv.d " + register + ",a0");
+	            emit(code, "    mv  " + register + ",a0");
 	        }
 	    }
 
@@ -471,7 +516,7 @@ public class NoVwlsLexer extends Lexer {
 	        emit(code, "    ecall");        // invoke the system call
 	        if (!register.equals("a0")) {
 	            // Transfer the results over to register from a0.
-	            emit(code, "    fmv.d " + register + ",a0");
+	            emit(code, "    mv  " + register + ",a0");
 	        }
 	    }
 
@@ -486,56 +531,71 @@ public class NoVwlsLexer extends Lexer {
 	        emit(code, "    # Emitting print double"); 
 	        emit(code, "    li    a7, 3");  // a7=3 is for printing doubles
 	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    ");
+	        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        // emit(code, "    ecall");        // invoke the system call
+	        // emit(code, "    ");
 	    }
 
 	    void generatePrintInt(StringBuilder code, String register) {
 	        if (!register.equals("a0")) {
 	            // Need to transfer the value in register to fa0
 	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
-	            emit(code, "    fmv.d a0," + register);
+	            emit(code, "    mv a0," + register);
 	        }
 	        emit(code, "    # Emitting print int"); 
 	        emit(code, "    li    a7, 1");  // a7=1 is for printing doubles
 	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    ");
+	        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        // emit(code, "    ecall");        // invoke the system call
+	        // emit(code, "    ");
 	    }
 
 	    void generatePrintString(StringBuilder code, String register) {
-	        if (!register.equals("a0")) {
+	        if(!register.equals("a0")) {
 	            // Need to transfer the value in register to fa0
 	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
-	            emit(code, "    fmv.d a0," + register);
+	            emit(code, "    mv a0," + register);
 	        }
 	        emit(code, "    # Emitting print string"); 
 	        emit(code, "    li    a7, 4");  // a7=4 is for printing strings
 	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        // emit(code, "    ecall");        // invoke the system call
+	        // emit(code, "    ");
+	    }
+
+	    void generatePrintChar(StringBuilder code, String register) {
+	        if (!register.equals("a0")) {
+	            // Need to transfer the value in register to fa0
+	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
+	            emit(code, "    mv a0," + register);
+	        }
+	        emit(code, "    # Emitting print char"); 
+	        emit(code, "    li    a7, 11");  // a7=4 is for printing chars
 	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    ");
+	        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        // emit(code, "    ecall");        // invoke the system call
+	        // emit(code, "    ");
 	    }
 
 	    void generatePrintBool(StringBuilder code, String register) {
 	        if (!register.equals("a0")) {
 	            // Need to transfer the value in register to fa0
 	            //    e.g. fmv.d fa0, fa1   fa0 = fa1
-	            emit(code, "    fmv.d a0," + register);
+	            emit(code, "     mv  a0," + register);
 	        }
 	        System.out.println("printing bool");
 	        emit(code, "    # Emitting print bool"); 
 	        emit(code, "    li    a7, 1");  // a7=5 is for printing bool values
 	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
-	        emit(code, "    li    a7, 11"); // a7=11 is for printing a character
-	        emit(code, "    ecall");        // invoke the system call
-	        emit(code, "    ");
+	        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
+	        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
+	        // emit(code, "    ecall");        // invoke the system call
+	        // emit(code, "    ");
 	    }
 
 	    /// Write the generated Java to file.
@@ -543,6 +603,7 @@ public class NoVwlsLexer extends Lexer {
 	        try (PrintWriter pw = new PrintWriter(ASSEMBLY_FILE, "UTF-8")) {
 	            pw.print(data_sb.toString());
 	            pw.print(text_sb.toString());
+	            pw.print(function_sb.toString());
 	        } catch (Exception e) {
 	            System.err.println("error: failed to write to " + ASSEMBLY_FILE + ": " + e.getMessage());
 	        }
