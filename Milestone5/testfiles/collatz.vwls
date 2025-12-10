@@ -1,0 +1,17 @@
+// Program 3 : Collatz steps
+
+nt n = scnNT;
+nt isEven = 0;
+
+//f(n > 0){
+    whl(n != 1){
+        isEven = n % 2;
+        f(isEven == 0){
+            n = n/2;
+        } ls {
+            n = 3 * n + 2;
+        }
+        prnt("hi");
+        n = 1;
+    }
+//}
