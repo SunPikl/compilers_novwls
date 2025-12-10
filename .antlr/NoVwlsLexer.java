@@ -430,7 +430,7 @@ public class NoVwlsLexer extends Lexer {
 	        String label = addCharValue(value);
 	        emit(code, "    # Loading constant " + value + " into register " + register); 
 	        emit(code, "    la " + "t0," + label); 
-	        emit(code, "    sb " + register + ", 0(t0)");
+	        emit(code, "    lb " + register + ", 0(t0)");
 	        emit(code, "    ");
 	        return code;
 	    }
@@ -445,13 +445,15 @@ public class NoVwlsLexer extends Lexer {
 	        return code;
 	    }
 
-	    StringBuilder generateLoadId(String register, String id) {
+	    StringBuilder generateLoadId(String register, String id, String type) {
 	        StringBuilder code = new StringBuilder();
 	        String label = ID_PREFIX + id;
 	        emit(code, "    # Loading id " + id + " into register " + register); 
 	        emit(code, "    la " + "t0," + label); 
 	        if(register.startsWith("f")) {
 	            emit(code, "    fld " + register + ", 0(t0)");
+	        } else if(type.equals("chr")){
+	            emit(code, "    lb " + register + ", 0(t0)");
 	        } else {
 	            emit(code, "    lw " + register + ", 0(t0)");
 	        }
@@ -461,7 +463,7 @@ public class NoVwlsLexer extends Lexer {
 	    }
 
 	    //generate assignments
-	    void generateAssign(String name, StringBuilder rhsJavaCode, String register) {
+	    void generateAssign(String name, StringBuilder rhsJavaCode, String register, String type) {
 	        // tempRegister is either t0 or t1 (if t0 is taken)
 	        String tempRegister = register.equals("t0") ? "t1" : "t0";
 
@@ -469,6 +471,8 @@ public class NoVwlsLexer extends Lexer {
 	        emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
 	        if(register.startsWith("f")) {
 	            emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+	        } else if(type.equals("chr")){
+	            emit(rhsJavaCode, "    sb " + register + ", 0(" + tempRegister + ")");
 	        } else {
 	            emit(rhsJavaCode, "    sw " + register + ", 0(" + tempRegister + ")");
 	        }
@@ -508,7 +512,7 @@ public class NoVwlsLexer extends Lexer {
 	    }
 
 	    void generateReadChar(StringBuilder code, String register) {
-	        emit(code, "    li    a7, 11");  // a7=11 is for reading chars
+	        emit(code, "    li    a7, 12");  // a7=12 is for reading chars
 	        emit(code, "    ecall");        // invoke the system call
 	        if (!register.equals("a0")) {
 	            // Transfer the results over to register from a0.
@@ -570,7 +574,7 @@ public class NoVwlsLexer extends Lexer {
 	            emit(code, "    mv a0," + register);
 	        }
 	        emit(code, "    # Emitting print char"); 
-	        emit(code, "    li    a7, 4");  // a7=4 is for printing chars
+	        emit(code, "    li    a7, 11");  // a7=4 is for printing chars
 	        emit(code, "    ecall");        // invoke the system call
 	        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
 	        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character

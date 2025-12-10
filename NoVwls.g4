@@ -332,7 +332,7 @@ grammar NoVwls;
         String label = addCharValue(value);
         emit(code, "    # Loading constant " + value + " into register " + register); 
         emit(code, "    la " + "t0," + label); 
-        emit(code, "    sb " + register + ", 0(t0)");
+        emit(code, "    lb " + register + ", 0(t0)");
         emit(code, "    ");
         return code;
     }
@@ -347,13 +347,15 @@ grammar NoVwls;
         return code;
     }
 
-    StringBuilder generateLoadId(String register, String id) {
+    StringBuilder generateLoadId(String register, String id, String type) {
         StringBuilder code = new StringBuilder();
         String label = ID_PREFIX + id;
         emit(code, "    # Loading id " + id + " into register " + register); 
         emit(code, "    la " + "t0," + label); 
         if(register.startsWith("f")) {
             emit(code, "    fld " + register + ", 0(t0)");
+        } else if(type.equals("chr")){
+            emit(code, "    lb " + register + ", 0(t0)");
         } else {
             emit(code, "    lw " + register + ", 0(t0)");
         }
@@ -363,7 +365,7 @@ grammar NoVwls;
     }
 
     //generate assignments
-    void generateAssign(String name, StringBuilder rhsJavaCode, String register) {
+    void generateAssign(String name, StringBuilder rhsJavaCode, String register, String type) {
         // tempRegister is either t0 or t1 (if t0 is taken)
         String tempRegister = register.equals("t0") ? "t1" : "t0";
 
@@ -371,6 +373,8 @@ grammar NoVwls;
         emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
         if(register.startsWith("f")) {
             emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+        } else if(type.equals("chr")){
+            emit(rhsJavaCode, "    sb " + register + ", 0(" + tempRegister + ")");
         } else {
             emit(rhsJavaCode, "    sw " + register + ", 0(" + tempRegister + ")");
         }
@@ -410,7 +414,7 @@ grammar NoVwls;
     }
 
     void generateReadChar(StringBuilder code, String register) {
-        emit(code, "    li    a7, 11");  // a7=11 is for reading chars
+        emit(code, "    li    a7, 12");  // a7=12 is for reading chars
         emit(code, "    ecall");        // invoke the system call
         if (!register.equals("a0")) {
             // Transfer the results over to register from a0.
@@ -472,7 +476,7 @@ grammar NoVwls;
             emit(code, "    mv a0," + register);
         }
         emit(code, "    # Emitting print char"); 
-        emit(code, "    li    a7, 4");  // a7=4 is for printing chars
+        emit(code, "    li    a7, 11");  // a7=4 is for printing chars
         emit(code, "    ecall");        // invoke the system call
         // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
         // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
@@ -754,12 +758,12 @@ assignStmt returns [StringBuilder code]:
         
         if (preexistingLHS) {
             // Just a new assignment to an existing variable
-            generateAssign(currLHS, $rhs.code, $rhs.finReg);
+            generateAssign(currLHS, $rhs.code, $rhs.finReg, currId.type);
         } else {
             // A new variable is being "declared"
             //Identifier newId = new Identifier(currLHS);
             mainTable.table.put(newId.id, newId);
-            generateAssign(newId.id, $rhs.code, $rhs.finReg);
+            generateAssign(newId.id, $rhs.code, $rhs.finReg, newId.type);
         }
 
         $code = $rhs.code;
@@ -952,15 +956,15 @@ printStmt returns [StringBuilder code]:
     more=printExpr[register]
     {
         $code.append($more.code);  // Start with the code for the expression
-        if($first.type.equals("nt")){
+        if($more.type.equals("nt")){
             generatePrintInt($code, $more.finReg);
-        } else if($first.type.equals("flt")){
+        } else if($more.type.equals("flt")){
             generatePrintDouble($code, $more.finReg);
-        } else if($first.type.equals("strng")){
+        } else if($more.type.equals("strng")){
             generatePrintString($code, $more.finReg);
-        } else if($first.type.equals("chr")){
+        } else if($more.type.equals("chr")){
             generatePrintString($code, $more.finReg);
-        } else if($first.type.equals("bl")){
+        } else if($more.type.equals("bl")){
             generatePrintBool($code, $more.finReg);
         }
         
@@ -1090,7 +1094,7 @@ compareStmt returns [StringBuilder code] :
     {
         // Else clause exists
         String elseLabel = generateLabel("else");
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         
         // Jump to end of if (skip else)
         emit(currentBlock, "    j " + ifEnd, true);
@@ -1100,7 +1104,7 @@ compareStmt returns [StringBuilder code] :
     elseBlock=blockStmt 
     {
         // End of else block
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, ifEnd + ":", true);
         
         // End the code block and get the result
@@ -1110,7 +1114,7 @@ compareStmt returns [StringBuilder code] :
     {
         // Handle case with no else clause
         if (!hasElse) {
-            StringBuilder currentBlock = getCurrentBlock();
+            currentBlock = getCurrentBlock();
             emit(currentBlock, ifEnd + ":", true);
             
             // End the code block and get the result
@@ -1328,7 +1332,7 @@ whileLoop returns [StringBuilder code] :
     body=blockStmt
     {
         // Get the loop code block
-        StringBuilder loopCode = getCurrentBlock();
+        loopCode = getCurrentBlock();
         
         // Add jump back to start
         emit(loopCode, "    j " + loopStart, true);
@@ -1365,13 +1369,13 @@ forLoop returns [StringBuilder code] :
     }
     body=blockStmt
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, loopIncr + ":", true);
         emit(currentBlock, "    # Loop increment", true);
     }
     (incr=forLoopInc)?      // increment
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         if ($incr.code != null) {
             currentBlock.append($incr.code.toString());
         }
@@ -1379,19 +1383,19 @@ forLoop returns [StringBuilder code] :
     }
     R_PRNTH 
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, loopCond + ":", true);
     }
     comp=comparison["a0"] SCOLN         // condition 
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         currentBlock.append($comp.code.toString());
         emit(currentBlock, "    bnez a0, " + loopStart, true);
         emit(currentBlock, "    j " + loopEnd, true);
         emit(currentBlock, "    # Condition check done", true);
     }
     {
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, loopEnd + ":", true);
         emit(currentBlock, "    # End for loop", true);
         
@@ -2134,7 +2138,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             }
 
             $finReg = $register;
-            $code = generateLoadId($finReg, id);
+            $code = generateLoadId($finReg, id, $type);
         }
     | arrayAccess
         {

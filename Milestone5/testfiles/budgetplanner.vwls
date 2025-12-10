@@ -2,7 +2,6 @@
 
 //read string
 strng name = scnSTRNG;
-prnt("Hello ",name);
 
 //read floats
 flt income = scnFLT;
@@ -13,5 +12,7 @@ flt fun = scnFLT;
 flt total = rent + food + fun;
 flt savings = income - total;
 
-prnt(total);
-prnt(savings);
+//prints
+prnt("Hello ",name);
+prnt("total ",total);
+prnt("savings ",savings);

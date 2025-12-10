@@ -444,7 +444,7 @@ public class NoVwlsParser extends Parser {
 	        String label = addCharValue(value);
 	        emit(code, "    # Loading constant " + value + " into register " + register); 
 	        emit(code, "    la " + "t0," + label); 
-	        emit(code, "    sb " + register + ", 0(t0)");
+	        emit(code, "    lb " + register + ", 0(t0)");
 	        emit(code, "    ");
 	        return code;
 	    }
@@ -459,13 +459,15 @@ public class NoVwlsParser extends Parser {
 	        return code;
 	    }
 
-	    StringBuilder generateLoadId(String register, String id) {
+	    StringBuilder generateLoadId(String register, String id, String type) {
 	        StringBuilder code = new StringBuilder();
 	        String label = ID_PREFIX + id;
 	        emit(code, "    # Loading id " + id + " into register " + register); 
 	        emit(code, "    la " + "t0," + label); 
 	        if(register.startsWith("f")) {
 	            emit(code, "    fld " + register + ", 0(t0)");
+	        } else if(type.equals("chr")){
+	            emit(code, "    lb " + register + ", 0(t0)");
 	        } else {
 	            emit(code, "    lw " + register + ", 0(t0)");
 	        }
@@ -475,7 +477,7 @@ public class NoVwlsParser extends Parser {
 	    }
 
 	    //generate assignments
-	    void generateAssign(String name, StringBuilder rhsJavaCode, String register) {
+	    void generateAssign(String name, StringBuilder rhsJavaCode, String register, String type) {
 	        // tempRegister is either t0 or t1 (if t0 is taken)
 	        String tempRegister = register.equals("t0") ? "t1" : "t0";
 
@@ -483,6 +485,8 @@ public class NoVwlsParser extends Parser {
 	        emit(rhsJavaCode, "    la " + tempRegister + "," + ID_PREFIX+name);
 	        if(register.startsWith("f")) {
 	            emit(rhsJavaCode, "    fsd " + register + ", 0(" + tempRegister + ")");
+	        } else if(type.equals("chr")){
+	            emit(rhsJavaCode, "    sb " + register + ", 0(" + tempRegister + ")");
 	        } else {
 	            emit(rhsJavaCode, "    sw " + register + ", 0(" + tempRegister + ")");
 	        }
@@ -522,7 +526,7 @@ public class NoVwlsParser extends Parser {
 	    }
 
 	    void generateReadChar(StringBuilder code, String register) {
-	        emit(code, "    li    a7, 11");  // a7=11 is for reading chars
+	        emit(code, "    li    a7, 12");  // a7=12 is for reading chars
 	        emit(code, "    ecall");        // invoke the system call
 	        if (!register.equals("a0")) {
 	            // Transfer the results over to register from a0.
@@ -584,7 +588,7 @@ public class NoVwlsParser extends Parser {
 	            emit(code, "    mv a0," + register);
 	        }
 	        emit(code, "    # Emitting print char"); 
-	        emit(code, "    li    a7, 4");  // a7=4 is for printing chars
+	        emit(code, "    li    a7, 11");  // a7=4 is for printing chars
 	        emit(code, "    ecall");        // invoke the system call
 	        // emit(code, "    li    a0, 10"); // ASCII 10 is \n (newline)
 	        // emit(code, "    li    a7, 11"); // a7=11 is for printing a character
@@ -1188,12 +1192,12 @@ public class NoVwlsParser extends Parser {
 			        
 			        if (preexistingLHS) {
 			            // Just a new assignment to an existing variable
-			            generateAssign(currLHS, ((AssignStmtContext)_localctx).rhs.code, ((AssignStmtContext)_localctx).rhs.finReg);
+			            generateAssign(currLHS, ((AssignStmtContext)_localctx).rhs.code, ((AssignStmtContext)_localctx).rhs.finReg, currId.type);
 			        } else {
 			            // A new variable is being "declared"
 			            //Identifier newId = new Identifier(currLHS);
 			            mainTable.table.put(newId.id, newId);
-			            generateAssign(newId.id, ((AssignStmtContext)_localctx).rhs.code, ((AssignStmtContext)_localctx).rhs.finReg);
+			            generateAssign(newId.id, ((AssignStmtContext)_localctx).rhs.code, ((AssignStmtContext)_localctx).rhs.finReg, newId.type);
 			        }
 
 			        ((AssignStmtContext)_localctx).code =  ((AssignStmtContext)_localctx).rhs.code;
@@ -1725,15 +1729,15 @@ public class NoVwlsParser extends Parser {
 				((PrintStmtContext)_localctx).more = printExpr(register);
 
 				        _localctx.code.append(((PrintStmtContext)_localctx).more.code);  // Start with the code for the expression
-				        if(((PrintStmtContext)_localctx).first.type.equals("nt")){
+				        if(((PrintStmtContext)_localctx).more.type.equals("nt")){
 				            generatePrintInt(_localctx.code, ((PrintStmtContext)_localctx).more.finReg);
-				        } else if(((PrintStmtContext)_localctx).first.type.equals("flt")){
+				        } else if(((PrintStmtContext)_localctx).more.type.equals("flt")){
 				            generatePrintDouble(_localctx.code, ((PrintStmtContext)_localctx).more.finReg);
-				        } else if(((PrintStmtContext)_localctx).first.type.equals("strng")){
+				        } else if(((PrintStmtContext)_localctx).more.type.equals("strng")){
 				            generatePrintString(_localctx.code, ((PrintStmtContext)_localctx).more.finReg);
-				        } else if(((PrintStmtContext)_localctx).first.type.equals("chr")){
+				        } else if(((PrintStmtContext)_localctx).more.type.equals("chr")){
 				            generatePrintString(_localctx.code, ((PrintStmtContext)_localctx).more.finReg);
-				        } else if(((PrintStmtContext)_localctx).first.type.equals("bl")){
+				        } else if(((PrintStmtContext)_localctx).more.type.equals("bl")){
 				            generatePrintBool(_localctx.code, ((PrintStmtContext)_localctx).more.finReg);
 				        }
 				        
@@ -1964,7 +1968,7 @@ public class NoVwlsParser extends Parser {
 
 				        // Else clause exists
 				        String elseLabel = generateLabel("else");
-				        StringBuilder currentBlock = getCurrentBlock();
+				        currentBlock = getCurrentBlock();
 				        
 				        // Jump to end of if (skip else)
 				        emit(currentBlock, "    j " + ifEnd, true);
@@ -1975,7 +1979,7 @@ public class NoVwlsParser extends Parser {
 				((CompareStmtContext)_localctx).elseBlock = blockStmt();
 
 				        // End of else block
-				        StringBuilder currentBlock = getCurrentBlock();
+				        currentBlock = getCurrentBlock();
 				        emit(currentBlock, ifEnd + ":", true);
 				        
 				        // End the code block and get the result
@@ -1987,7 +1991,7 @@ public class NoVwlsParser extends Parser {
 
 			        // Handle case with no else clause
 			        if (!hasElse) {
-			            StringBuilder currentBlock = getCurrentBlock();
+			            currentBlock = getCurrentBlock();
 			            emit(currentBlock, ifEnd + ":", true);
 			            
 			            // End the code block and get the result
@@ -2440,7 +2444,7 @@ public class NoVwlsParser extends Parser {
 			((WhileLoopContext)_localctx).body = blockStmt();
 
 			        // Get the loop code block
-			        StringBuilder loopCode = getCurrentBlock();
+			        loopCode = getCurrentBlock();
 			        
 			        // Add jump back to start
 			        emit(loopCode, "    j " + loopStart, true);
@@ -2550,7 +2554,7 @@ public class NoVwlsParser extends Parser {
 			setState(303);
 			((ForLoopContext)_localctx).body = blockStmt();
 
-			        StringBuilder currentBlock = getCurrentBlock();
+			        currentBlock = getCurrentBlock();
 			        emit(currentBlock, loopIncr + ":", true);
 			        emit(currentBlock, "    # Loop increment", true);
 			    
@@ -2565,7 +2569,7 @@ public class NoVwlsParser extends Parser {
 			}
 
 
-			        StringBuilder currentBlock = getCurrentBlock();
+			        currentBlock = getCurrentBlock();
 			        if (((ForLoopContext)_localctx).incr.code != null) {
 			            currentBlock.append(((ForLoopContext)_localctx).incr.code.toString());
 			        }
@@ -2574,7 +2578,7 @@ public class NoVwlsParser extends Parser {
 			setState(309);
 			match(R_PRNTH);
 
-			        StringBuilder currentBlock = getCurrentBlock();
+			        currentBlock = getCurrentBlock();
 			        emit(currentBlock, loopCond + ":", true);
 			    
 			setState(311);
@@ -2582,14 +2586,14 @@ public class NoVwlsParser extends Parser {
 			setState(312);
 			match(SCOLN);
 
-			        StringBuilder currentBlock = getCurrentBlock();
+			        currentBlock = getCurrentBlock();
 			        currentBlock.append(((ForLoopContext)_localctx).comp.code.toString());
 			        emit(currentBlock, "    bnez a0, " + loopStart, true);
 			        emit(currentBlock, "    j " + loopEnd, true);
 			        emit(currentBlock, "    # Condition check done", true);
 			    
 
-			        StringBuilder currentBlock = getCurrentBlock();
+			        currentBlock = getCurrentBlock();
 			        emit(currentBlock, loopEnd + ":", true);
 			        emit(currentBlock, "    # End for loop", true);
 			        
@@ -4034,7 +4038,7 @@ public class NoVwlsParser extends Parser {
 				            }
 
 				            ((FactorContext)_localctx).finReg =  _localctx.register;
-				            ((FactorContext)_localctx).code =  generateLoadId(_localctx.finReg, id);
+				            ((FactorContext)_localctx).code =  generateLoadId(_localctx.finReg, id, _localctx.type);
 				        
 				}
 				break;

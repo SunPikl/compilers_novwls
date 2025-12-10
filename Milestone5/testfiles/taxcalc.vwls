@@ -5,6 +5,23 @@ flt income = scnFLT;
 flt rate = 0.0;
 
 //tax determiner
+f(10000 <= income < 40000){
+    prnt("hi");
+    rate = 0.1;
+} ls {
+    f(40000 <= income < 80000){
+        rate = 0.2;
+    } ls {
+        f(income >= 80000){
+            rate = 0.3;
+        }
+    }
+}
 
-chr x = a;
-prnt(x);
+flt tax = rate * income;
+flt net = income - tax;
+
+rate = rate * 100;
+prnt("tax rate ", rate, "%");
+prnt("tax amount ", tax);
+prnt("net ", net);
