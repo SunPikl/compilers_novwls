@@ -170,6 +170,42 @@ public class NoVwlsLexer extends Lexer {
 	        diagnostics.add("line " + t.getLine() + ":" + t.getCharPositionInLine() + " " + msg);
 	    }
 
+	     //Code Block Management for Loops/Conditionals
+	    Stack<StringBuilder> codeBlockStack = new Stack<>();
+	    int labelCounter = 0;
+
+	    // Method to start a new code block
+	    StringBuilder startCodeBlock() {
+	        StringBuilder block = new StringBuilder();
+	        codeBlockStack.push(block);
+	        return block;
+	    }
+
+	    // Method to end a code block and get its contents
+	    String endCodeBlock() {
+	        if (!codeBlockStack.isEmpty()) {
+	            return codeBlockStack.pop().toString();
+	        }
+	        return "";
+	    }
+
+	    // Method to get current code block
+	    StringBuilder getCurrentBlock() {
+	        if (!codeBlockStack.isEmpty()) {
+	            return codeBlockStack.peek();
+	        }
+	        return text_sb; // Default to main text segment
+	    }
+
+	    // Generate unique labels
+	    String generateLabel(String prefix) {
+	        return prefix + "_" + (labelCounter++);
+	    }
+
+	    void emitLabel(StringBuilder sb, String label) {
+	        emit(sb, label + ":", true);
+	    }
+
 	    int printDiagnostics() {
 	        int numErrors = 0;
 	        for (String v : assigned) {
@@ -222,6 +258,7 @@ public class NoVwlsLexer extends Lexer {
 	    Identifier writeTo = null;
 	    StringBuilder data_sb = new StringBuilder(); //data segment
 	    int data_count = 0;
+	    StringBuilder function_sb = new StringBuilder();
 
 	    void emit(StringBuilder sb, String s, boolean newLine) { 
 	        sb.append(s);
@@ -230,6 +267,7 @@ public class NoVwlsLexer extends Lexer {
 	    void emit(StringBuilder sb, String s) { emit(sb, s, true); }
 	    void data_emit(String s) { emit(data_sb, s); }
 	    void text_emit(String s) { emit(text_sb, s); } 
+	    void function_emit(String s) { emit(function_sb, s); }
 
 	    //make file 
 	    final String ASSEMBLY_FILE = "code.s";
@@ -561,6 +599,7 @@ public class NoVwlsLexer extends Lexer {
 	        try (PrintWriter pw = new PrintWriter(ASSEMBLY_FILE, "UTF-8")) {
 	            pw.print(data_sb.toString());
 	            pw.print(text_sb.toString());
+	            pw.print(function_sb.toString());
 	        } catch (Exception e) {
 	            System.err.println("error: failed to write to " + ASSEMBLY_FILE + ": " + e.getMessage());
 	        }

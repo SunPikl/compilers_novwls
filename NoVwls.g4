@@ -72,6 +72,42 @@ grammar NoVwls;
         diagnostics.add("line " + t.getLine() + ":" + t.getCharPositionInLine() + " " + msg);
     }
 
+     //Code Block Management for Loops/Conditionals
+    Stack<StringBuilder> codeBlockStack = new Stack<>();
+    int labelCounter = 0;
+
+    // Method to start a new code block
+    StringBuilder startCodeBlock() {
+        StringBuilder block = new StringBuilder();
+        codeBlockStack.push(block);
+        return block;
+    }
+
+    // Method to end a code block and get its contents
+    String endCodeBlock() {
+        if (!codeBlockStack.isEmpty()) {
+            return codeBlockStack.pop().toString();
+        }
+        return "";
+    }
+
+    // Method to get current code block
+    StringBuilder getCurrentBlock() {
+        if (!codeBlockStack.isEmpty()) {
+            return codeBlockStack.peek();
+        }
+        return text_sb; // Default to main text segment
+    }
+
+    // Generate unique labels
+    String generateLabel(String prefix) {
+        return prefix + "_" + (labelCounter++);
+    }
+
+    void emitLabel(StringBuilder sb, String label) {
+        emit(sb, label + ":", true);
+    }
+
     int printDiagnostics() {
         int numErrors = 0;
         for (String v : assigned) {
@@ -124,6 +160,7 @@ grammar NoVwls;
     Identifier writeTo = null;
     StringBuilder data_sb = new StringBuilder(); //data segment
     int data_count = 0;
+    StringBuilder function_sb = new StringBuilder();
 
     void emit(StringBuilder sb, String s, boolean newLine) { 
         sb.append(s);
@@ -132,6 +169,7 @@ grammar NoVwls;
     void emit(StringBuilder sb, String s) { emit(sb, s, true); }
     void data_emit(String s) { emit(data_sb, s); }
     void text_emit(String s) { emit(text_sb, s); } 
+    void function_emit(String s) { emit(function_sb, s); }
 
     //make file 
     final String ASSEMBLY_FILE = "code.s";
@@ -463,6 +501,7 @@ grammar NoVwls;
         try (PrintWriter pw = new PrintWriter(ASSEMBLY_FILE, "UTF-8")) {
             pw.print(data_sb.toString());
             pw.print(text_sb.toString());
+            pw.print(function_sb.toString());
         } catch (Exception e) {
             System.err.println("error: failed to write to " + ASSEMBLY_FILE + ": " + e.getMessage());
         }
@@ -533,9 +572,12 @@ program :
     } 
     (stmt
     {
-        text_sb.append($stmt.code);
+        // Append the generated code from each statement
+        if ($stmt.code != null) {
+            text_sb.append($stmt.code.toString());
+        }
     }
-    )* EOF 
+    )*EOF 
     { 
         printDiagnostics(); 
         int numErrors = printDiagnostics();
@@ -556,12 +598,12 @@ stmt returns [StringBuilder code] :
     | declareStmt 
     | arrayAssignStmt 
     | printStmt { $code = $printStmt.code; }
-    | compareStmt { $code = new StringBuilder(); }
+    | compareStmt { $code = $compareStmt.code; }
     | functStmt 
-    | loopStmt 
+    | loopStmt { $code = $loopStmt.code; }
     | breakStmt 
     | functCall SCOLN 
-    | functDefine 
+//    | functDefine 
     | comment 
     | arrayDeclWithSize;
 
@@ -1021,30 +1063,61 @@ printExpr [String register] returns [StringBuilder code, String type, String fin
         }
     };
 
-compareStmt : KW_F '(' comparison["a0"] ')'
+compareStmt returns [StringBuilder code] : 
+    KW_F '(' comp=comparison["a0"] ')'
     {
-        // if($comparison.value > 0){ //if true
-        //     emit("if (true) {\n");
-        // } else { //if false
-        //     emit("if (false) {\n");
-        // }
-         //emit("if (" + $comparison.code + ") {\n", writeTo);
+        String ifTrue = generateLabel("if_true");
+        String ifEnd = generateLabel("if_end");
         
+        // Start new code block for if statement
+        StringBuilder ifCode = startCodeBlock();
+        
+        // Append comparison code
+        ifCode.append($comp.code.toString());
+        
+        // Branch if false (0) to end (skip then block)
+        emit(ifCode, "    beqz a0, " + ifEnd, true);
+        emit(ifCode, ifTrue + ":", true);
     }
-     blockStmt 
+    thenBlock=blockStmt
     {
-        //emit("}\n", writeTo);
+        StringBuilder currentBlock = getCurrentBlock();
+        
+        // Check if there's an else clause
+        boolean hasElse = false; // We'll track this
     }
     (KW_LS
     {
-        //emit("else {\n", writeTo);
+        // Else clause exists
+        String elseLabel = generateLabel("else");
+        StringBuilder currentBlock = getCurrentBlock();
+        
+        // Jump to end of if (skip else)
+        emit(currentBlock, "    j " + ifEnd, true);
+        emit(currentBlock, elseLabel + ":", true);
+        hasElse = true;
     }
-        blockStmt 
+    elseBlock=blockStmt 
     {
-        //emit("}\n", writeTo);
+        // End of else block
+        StringBuilder currentBlock = getCurrentBlock();
+        emit(currentBlock, ifEnd + ":", true);
+        
+        // End the code block and get the result
+        $code = new StringBuilder(endCodeBlock());
     }
-    )* 
-    ; 
+    )?
+    {
+        // Handle case with no else clause
+        if (!hasElse) {
+            StringBuilder currentBlock = getCurrentBlock();
+            emit(currentBlock, ifEnd + ":", true);
+            
+            // End the code block and get the result
+            $code = new StringBuilder(endCodeBlock());
+        }
+    }
+    ;
 
 functStmt : KW_FNCTN d=dataType a=DNT 
     {
@@ -1071,7 +1144,9 @@ functStmt : KW_FNCTN d=dataType a=DNT
                 error($a , "function '" + $a.getText() + "' definition does not match declaration");
             }
         }
-        
+
+        function_emit($a.text + ":");
+        text_emit("    .globl " + $a.text);
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
     }
@@ -1090,7 +1165,6 @@ functStmt : KW_FNCTN d=dataType a=DNT
         if ($dt.type.endsWith("[][]")) {
             firstP.is2DArray = true;
         }
-
         //add to list
         function.parameters.add(firstP);
 
@@ -1181,7 +1255,17 @@ functStmt : KW_FNCTN d=dataType a=DNT
         
         
     }
-    stmt* KW_RTN factor["fa0"] SCOLN '}'
+    stmt*
+    {
+        if($stmt.code != null){
+            function_emit($stmt.code.toString());
+        }
+        
+    } 
+    KW_RTN
+    {
+        function_emit("    ret");
+    } factor["fa0"] SCOLN '}'
     {
         //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
         String returnVal = "String ";
@@ -1199,7 +1283,6 @@ functStmt : KW_FNCTN d=dataType a=DNT
             //emit(" in.close();\n", writeTo);
             //emit("return " + $factor.code + "; \n", writeTo);  
         }
-
         //end scope
         scopeStack.pop();
         
@@ -1210,83 +1293,191 @@ functStmt : KW_FNCTN d=dataType a=DNT
         //scopeStack.peek().table.get($a.getText()).parameters = new ArrayList<>();
     } ; 
 
-//~~~~~~~~~~~~~~~~~~~ Loop Statements ~~~~~~~~~~~~~~~~~~
-loopStmt : whileLoop | forLoop | doWhileLoop | breakStmt;
+//Loop Statements
+loopStmt returns [StringBuilder code] : 
+    whl=whileLoop { $code = $whl.code; }
+    | fr=forLoop { $code = $fr.code; }
+    | dwhl=doWhileLoop { $code = $dwhl.code; }
+    | brk=breakStmt { $code = $brk.code; };
 
-// While loop
-whileLoop : KW_WHL 
+//While loop - FIXED structure
+whileLoop returns [StringBuilder code] : 
+    KW_WHL 
     L_PRNTH 
     {
-        //emit("while(", writeTo);
+        String loopStart = generateLabel("while_start");
+        String loopEnd = generateLabel("while_end");
+        
+        // Start a new code block for the loop
+        StringBuilder loopCode = startCodeBlock();
+        
+        // Emit loop start label
+        emit(loopCode, loopStart + ":", true);
+        emit(loopCode, "    # While loop condition", true);
     }
-    comparison["fa0"]
+    comp=comparison["a0"]
     {
-        //replace with string of comparison
-        //if($comparison.value > 0){ //if true
-        //    emit("true", writeTo);
-        //} else {
-        //    emit("false", writeTo);
-        //}
-        //emit($comparison.code, writeTo);
+        // Get the comparison code
+        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock.append($comp.code.toString());
+        
+        // Branch if false (0) to end
+        emit(currentBlock, "    beqz a0, " + loopEnd, true);
     }
-     R_PRNTH 
-     {
-        //emit("){", writeTo);
-     }
-    blockStmt
-        {
-            //emit("}", writeTo);
-        }
-    ; 
+    R_PRNTH 
+    body=blockStmt
+    {
+        // Get the loop code block
+        StringBuilder loopCode = getCurrentBlock();
+        
+        // Add jump back to start
+        emit(loopCode, "    j " + loopStart, true);
+        emit(loopCode, loopEnd + ":", true);
+        emit(loopCode, "    # End while loop", true);
+        
+        // End the code block and get the result
+        $code = new StringBuilder(endCodeBlock());
+    }
+    ;
 
 // For loop - FIXED structure
-forLoop : KW_FR 
+forLoop returns [StringBuilder code] : 
+    KW_FR 
     L_PRNTH
     {
-        //emit("for(", writeTo);
+        String loopStart = generateLabel("for_start");
+        String loopCond = generateLabel("for_cond");
+        String loopEnd = generateLabel("for_end");
+        String loopIncr = generateLabel("for_incr");
+        
+        // Start a new code block for the for loop
+        StringBuilder forCode = startCodeBlock();
     } 
-        (assignStmt | SCOLN)    // initialization
-        comparison["fa0"] SCOLN         // condition 
-        {
-            //emit($comparison.code + ";", writeTo);
-        } 
-        (forLoopInc)?      // increment
-    R_PRNTH {
-        //emit("){", writeTo);
+    (init=assignStmt | SCOLN)    // initialization
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        if ($init.code != null) {
+            currentBlock.append($init.code.toString());
         }
-    blockStmt {
-        //emit("}", writeTo);
+        emit(currentBlock, "    j " + loopCond, true);
+        emit(currentBlock, loopStart + ":", true);
+        emit(currentBlock, "    # For loop body", true);
+    }
+    body=blockStmt
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        emit(currentBlock, loopIncr + ":", true);
+        emit(currentBlock, "    # Loop increment", true);
+    }
+    (incr=forLoopInc)?      // increment
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        if ($incr.code != null) {
+            currentBlock.append($incr.code.toString());
         }
+        emit(currentBlock, "    # Jump to condition", true);
+    }
+    R_PRNTH 
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        emit(currentBlock, loopCond + ":", true);
+    }
+    comp=comparison["a0"] SCOLN         // condition 
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock.append($comp.code.toString());
+        emit(currentBlock, "    bnez a0, " + loopStart, true);
+        emit(currentBlock, "    j " + loopEnd, true);
+        emit(currentBlock, "    # Condition check done", true);
+    }
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        emit(currentBlock, loopEnd + ":", true);
+        emit(currentBlock, "    # End for loop", true);
+        
+        // End the code block and get the result
+        $code = new StringBuilder(endCodeBlock());
+    }
     ;
 
 // Do-While loop  
-doWhileLoop : KW_D {
-        //emit("do{\n", writeTo);
-        }
-    blockStmt
-    KW_WHL L_PRNTH comparison["fa0"] R_PRNTH SCOLN {
-        //emit("}while("+ $comparison.code + ");\n", writeTo);
-        }
-    ;
-
-// Break statement
-breakStmt : KW_BRK SCOLN 
+doWhileLoop returns [StringBuilder code] : 
+    KW_D 
     {
-        //emit("break;", writeTo);
+        String loopStart = generateLabel("do_while_start");
+        String loopEnd = generateLabel("do_while_end");
+        
+        // Start a new code block
+        StringBuilder doWhileCode = startCodeBlock();
+        
+        emit(getCurrentBlock(), loopStart + ":", true);
+        emit(getCurrentBlock(), "    # Do-while loop body", true);
+    }
+    body=blockStmt
+    KW_WHL L_PRNTH comp=comparison["a0"] R_PRNTH SCOLN 
+    {
+        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock.append($comp.code.toString());
+        
+        // Check condition - if true (non-zero), loop back
+        emit(currentBlock, "    bnez a0, " + loopStart, true);
+        emit(currentBlock, loopEnd + ":", true);
+        emit(currentBlock, "    # End do-while loop", true);
+        
+        // End the code block and get the result
+        $code = new StringBuilder(endCodeBlock());
     }
     ;
 
+// Break statement
+breakStmt returns [StringBuilder code] : 
+    KW_BRK SCOLN 
+    {
+        // TODO: Need to track which loop we're breaking from
+        // For now, just generate a comment
+        StringBuilder breakCode = new StringBuilder();
+        emit(breakCode, "    # break statement - not yet implemented", true);
+        $code = breakCode;
+    }
+    ;
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 elseC : KW_LS blockStmt; 
 
 // For loop increment options
-forLoopInc : 
-    assignStmt     // x = x + 1
-    | DNT INC  {//emit($DNT.getText()+"++", writeTo);
-                }              // x++
-    | DNT DCR  {//emit($DNT.getText()+"--", writeTo);
-                }             // x--
+forLoopInc returns [StringBuilder code] : 
+    inc=assignStmt     // x = x + 1
+    { 
+        $code = $inc.code;
+    }
+    | DNT INC  // x++
+    {
+        // Generate x++ in RISC-V
+        StringBuilder incCode = new StringBuilder();
+        emit(incCode, "    # Increment " + $DNT.getText() + "++", true);
+        
+        // Load variable
+        emit(incCode, "    la t0, IDX" + $DNT.getText(), true);
+        emit(incCode, "    lw t1, 0(t0)", true);
+        emit(incCode, "    addi t1, t1, 1", true);
+        emit(incCode, "    sw t1, 0(t0)", true);
+        
+        $code = incCode;
+    }
+    | DNT DCR  // x--
+    {
+        // Generate x-- in RISC-V
+        StringBuilder incCode = new StringBuilder();
+        emit(incCode, "    # Decrement " + $DNT.getText() + "--", true);
+        
+        // Load variable
+        emit(incCode, "    la t0, IDX" + $DNT.getText(), true);
+        emit(incCode, "    lw t1, 0(t0)", true);
+        emit(incCode, "    addi t1, t1, -1", true);
+        emit(incCode, "    sw t1, 0(t0)", true);
+        
+        $code = incCode;
+    }
     ;
 
 expr[String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code, String finReg]: 
@@ -1318,14 +1509,20 @@ expr[String register] returns [boolean hasKnownValue, String type, float value, 
 comparison [String register] returns [boolean hasKnownValue, float value, StringBuilder code, String finReg] : 
     a=comparisonExpr [$register]
     {
-        if(!($a.type.equals("bl"))){
-            System.err.println("Comparison must return boolean");
+        // comparisonExpr should put result (0 or 1) in $a.finReg
+        // Copy to a0 for branching if needed
+        $code = $a.code;
+        
+        if (!$a.finReg.equals("a0")) {
+            // Move result to a0 for consistency
+            $code.append("    mv a0, " + $a.finReg + "\n");
+            $finReg = "a0";
         } else {
-            $hasKnownValue = $a.hasKnownValue;
-            $value = $a.value;
-            $code = $a.code;
-            $finReg = $a.finReg;
+            $finReg = "a0";
         }
+        
+        $hasKnownValue = $a.hasKnownValue;
+        $value = $a.value;
     };
 
 comparisonExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code, String finReg] : 
@@ -1981,6 +2178,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
 functCall returns [boolean hasKnownValue, String type, float value, String content, String code]: 
     DNT '('
     {
+        text_emit("    call "+$DNT.text);
         String id = $DNT.getText();
         used.add(id);
         Identifier currentId = null;
