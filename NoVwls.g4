@@ -124,6 +124,7 @@ grammar NoVwls;
     Identifier writeTo = null;
     StringBuilder data_sb = new StringBuilder(); //data segment
     int data_count = 0;
+    StringBuilder function_sb = new StringBuilder();
 
     void emit(StringBuilder sb, String s, boolean newLine) { 
         sb.append(s);
@@ -132,6 +133,7 @@ grammar NoVwls;
     void emit(StringBuilder sb, String s) { emit(sb, s, true); }
     void data_emit(String s) { emit(data_sb, s); }
     void text_emit(String s) { emit(text_sb, s); } 
+    void function_emit(String s) { emit(function_sb, s); }
 
     //make file 
     final String ASSEMBLY_FILE = "code.s";
@@ -445,6 +447,7 @@ grammar NoVwls;
         try (PrintWriter pw = new PrintWriter(ASSEMBLY_FILE, "UTF-8")) {
             pw.print(data_sb.toString());
             pw.print(text_sb.toString());
+            pw.print(function_sb.toString());
         } catch (Exception e) {
             System.err.println("error: failed to write to " + ASSEMBLY_FILE + ": " + e.getMessage());
         }
@@ -539,11 +542,11 @@ stmt returns [StringBuilder code] :
     | arrayAssignStmt 
     | printStmt { $code = $printStmt.code; }
     | compareStmt { $code = new StringBuilder(); }
-    | functStmt 
+    | functStmt
     | loopStmt 
     | breakStmt 
     | functCall SCOLN 
-    | functDefine 
+//    | functDefine 
     | comment 
     | arrayDeclWithSize;
 
@@ -1044,7 +1047,9 @@ functStmt : KW_FNCTN d=dataType a=DNT
                 error($a , "function '" + $a.getText() + "' definition does not match declaration");
             }
         }
-        
+
+        function_emit($a.text + ":");
+        text_emit("    .globl " + $a.text);
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
     }
@@ -1063,7 +1068,6 @@ functStmt : KW_FNCTN d=dataType a=DNT
         if ($dt.type.endsWith("[][]")) {
             firstP.is2DArray = true;
         }
-
         //add to list
         function.parameters.add(firstP);
 
@@ -1154,7 +1158,17 @@ functStmt : KW_FNCTN d=dataType a=DNT
         
         
     }
-    stmt* KW_RTN factor["fa0"] SCOLN '}'
+    stmt*
+    {
+        if($stmt.code != null){
+            function_emit($stmt.code.toString());
+        }
+        
+    } 
+    KW_RTN
+    {
+        function_emit("    ret");
+    } factor["fa0"] SCOLN '}'
     {
         //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
         String returnVal = "String ";
@@ -1172,7 +1186,6 @@ functStmt : KW_FNCTN d=dataType a=DNT
             //emit(" in.close();\n", writeTo);
             //emit("return " + $factor.code + "; \n", writeTo);  
         }
-
         //end scope
         scopeStack.pop();
         
@@ -1922,6 +1935,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
 functCall returns [boolean hasKnownValue, String type, float value, String content, String code]: 
     DNT '('
     {
+        text_emit("    call "+$DNT.text);
         String id = $DNT.getText();
         used.add(id);
         Identifier currentId = null;

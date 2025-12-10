@@ -21,3 +21,16 @@ prnt(more);
 
 //flt g = scnFLT;
 //prnt(g);
+
+Fnctn nt test(){
+    nt w = 3;
+    prnt(w);
+    rtn w;
+}
+Fnctn nt test2(){
+    prnt(a);
+    rtn a;
+}
+
+test();
+test2();
