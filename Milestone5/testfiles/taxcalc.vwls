@@ -1,0 +1,10 @@
+//Program 2 : Piecewise Tax Calculator
+
+//take in float
+flt income = scnFLT;
+flt rate = 0.0;
+
+//tax determiner
+
+chr x = a;
+prnt(x);

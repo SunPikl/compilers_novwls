@@ -1,0 +1,17 @@
+// Program 1: Budget Planner
+
+//read string
+strng name = scnSTRNG;
+prnt("Hello ",name);
+
+//read floats
+flt income = scnFLT;
+flt rent = scnFLT;
+flt food = scnFLT;
+flt fun = scnFLT;
+
+flt total = rent + food + fun;
+flt savings = income - total;
+
+prnt(total);
+prnt(savings);
