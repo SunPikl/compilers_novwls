@@ -577,7 +577,7 @@ stmt returns [StringBuilder code] :
     | declareStmt 
     | arrayAssignStmt 
     | printStmt { $code = $printStmt.code; }
-    | compareStmt { $code = new StringBuilder(); }
+    | compareStmt { $code = $compareStmt.code; }
     | functStmt 
     | loopStmt { $code = $loopStmt.code; }
     | breakStmt 
@@ -1033,30 +1033,61 @@ printExpr [String register] returns [StringBuilder code, String type]:
         }
     };
 
-compareStmt : KW_F '(' comparison["fa0"] ')'
+compareStmt returns [StringBuilder code] : 
+    KW_F '(' comp=comparison["a0"] ')'
     {
-        // if($comparison.value > 0){ //if true
-        //     emit("if (true) {\n");
-        // } else { //if false
-        //     emit("if (false) {\n");
-        // }
-         //emit("if (" + $comparison.code + ") {\n", writeTo);
+        String ifTrue = generateLabel("if_true");
+        String ifEnd = generateLabel("if_end");
         
+        // Start new code block for if statement
+        StringBuilder ifCode = startCodeBlock();
+        
+        // Append comparison code
+        ifCode.append($comp.code.toString());
+        
+        // Branch if false (0) to end (skip then block)
+        emit(ifCode, "    beqz a0, " + ifEnd, true);
+        emit(ifCode, ifTrue + ":", true);
     }
-     blockStmt 
+    thenBlock=blockStmt
     {
-        //emit("}\n", writeTo);
+        StringBuilder currentBlock = getCurrentBlock();
+        
+        // Check if there's an else clause
+        boolean hasElse = false; // We'll track this
     }
     (KW_LS
     {
-        //emit("else {\n", writeTo);
+        // Else clause exists
+        String elseLabel = generateLabel("else");
+        StringBuilder currentBlock = getCurrentBlock();
+        
+        // Jump to end of if (skip else)
+        emit(currentBlock, "    j " + ifEnd, true);
+        emit(currentBlock, elseLabel + ":", true);
+        hasElse = true;
     }
-        blockStmt 
+    elseBlock=blockStmt 
     {
-        //emit("}\n", writeTo);
+        // End of else block
+        StringBuilder currentBlock = getCurrentBlock();
+        emit(currentBlock, ifEnd + ":", true);
+        
+        // End the code block and get the result
+        $code = new StringBuilder(endCodeBlock());
     }
-    )* 
-    ; 
+    )?
+    {
+        // Handle case with no else clause
+        if (!hasElse) {
+            StringBuilder currentBlock = getCurrentBlock();
+            emit(currentBlock, ifEnd + ":", true);
+            
+            // End the code block and get the result
+            $code = new StringBuilder(endCodeBlock());
+        }
+    }
+    ;
 
 functStmt : KW_FNCTN d=dataType a=DNT 
     {
