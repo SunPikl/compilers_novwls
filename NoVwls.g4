@@ -1153,9 +1153,11 @@ functStmt : KW_FNCTN d=dataType a=DNT
         text_emit("    .globl " + $a.text);
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
+        function_emit("    addi sp,sp,-16");
     }
     '(' (dt=dataType b=DNT 
     {
+
         //store arg
         Identifier firstP = new Identifier();
         firstP.type = $dt.type;
@@ -1268,6 +1270,7 @@ functStmt : KW_FNCTN d=dataType a=DNT
     } 
     KW_RTN
     {
+        function_emit("    addi sp,sp,16");
         function_emit("    ret");
     } factor["fa0"] SCOLN '}'
     {
