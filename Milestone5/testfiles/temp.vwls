@@ -1,0 +1,41 @@
+// Program 4: Temperature analyzer
+
+nt n = scnNT;
+
+whl(n <= 0){
+    prnt("Array size N must be positive. Try again.");
+    n = scnNT;
+}
+
+//make array
+flt temps[n];
+
+fr(nt input = 0; input < n; input++;){
+    //fill array
+    flt value = scnFLT;
+    temps[input] = scnFLT;
+}
+
+flt mean = input[0];
+flt min = input[0];
+flt max = input[0];
+fr(nt x = 0; x < n; x++;){
+    //find mean
+
+    //find min
+
+    //find max
+
+}
+
+nt abvmean = 0;
+fr(nt x = 0; x < n; x++){
+    f(x > mean){
+        abvmean = abvmean + 1;
+    }
+}
+
+prnt("mean ", mean);
+prnt("min ", min);
+prnt("max ", max);
+prnt("above mean ", abvmean);

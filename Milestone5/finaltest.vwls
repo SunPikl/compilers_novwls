@@ -1,32 +1,39 @@
 
-
+//assignments
+prnt("assign values");
 nt a = 2;
 prnt(a);
 
+prnt("assign float");
 flt b = 4.0;
 prnt(b);
 
-//strng c = "hi";
-//prnt(c);
+strng c = "hi";
+prnt(c);
 
+chr has = 'c';
+prnt(has);
+
+//Math
+prnt("arithmetic");
 flt q = a / b;
 prnt(q);
 
 flt nono = q + 2.3 + 4.2 / 22  + 2.3 * 2 ;
 prnt(nono);
 
+//multiline print
+prnt("multi line print");
 bl more = 2 != 2*4.8;
-prnt(more, "hi");
+prnt(more, "= bool");
 
-prnt("hi");
+//scan flt
+prnt("input float");
+flt g = scnFLT;
+prnt("printing float: ", g);
 
-//chr has = 'c';
-//prnt(has);
 
-
-//flt g = scnFLT;
-//prnt(g);
-
+//functions
 Fnctn nt test(){
     nt w = 3;
     prnt(w);
@@ -38,4 +45,4 @@ Fnctn nt test2(){
 }
 
 test();
-test2();
+//test2();
