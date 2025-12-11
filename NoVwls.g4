@@ -1092,7 +1092,7 @@ printExpr [String register] returns [StringBuilder code, String type, String fin
     {
         // Else clause exists - jump to skip else block
         String elseLabel = generateLabel("else");
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         
         // Jump to end of if (skip else block)
         emit(currentBlock, "    j " + ifEnd, true);
@@ -1101,7 +1101,7 @@ printExpr [String register] returns [StringBuilder code, String type, String fin
     elseBlock=blockStmt 
     {
         // End of else block
-        StringBuilder currentBlock = getCurrentBlock();
+        currentBlock = getCurrentBlock();
         emit(currentBlock, ifEnd + ":", true);
         
         // End the code block and get the result
@@ -1111,7 +1111,7 @@ printExpr [String register] returns [StringBuilder code, String type, String fin
     {
         // Handle case with no else clause
         if ($code == null) {
-            StringBuilder currentBlock = getCurrentBlock();
+            currentBlock = getCurrentBlock();
             
             // Jump to end after then block (since no else)
             emit(currentBlock, "    j " + ifEnd, true);

@@ -1953,10 +1953,8 @@ public class NoVwlsParser extends Parser {
 			setState(224);
 			((CompareStmtContext)_localctx).thenBlock = blockStmt();
 
+			        // Get the current code block after then block
 			        StringBuilder currentBlock = getCurrentBlock();
-			        
-			        // Check if there's an else clause
-			        boolean hasElse = false; // We'll track this
 			    
 			setState(231);
 			_errHandler.sync(this);
@@ -1966,14 +1964,13 @@ public class NoVwlsParser extends Parser {
 				setState(226);
 				match(KW_LS);
 
-				        // Else clause exists
+				        // Else clause exists - jump to skip else block
 				        String elseLabel = generateLabel("else");
 				        currentBlock = getCurrentBlock();
 				        
-				        // Jump to end of if (skip else)
+				        // Jump to end of if (skip else block)
 				        emit(currentBlock, "    j " + ifEnd, true);
 				        emit(currentBlock, elseLabel + ":", true);
-				        hasElse = true;
 				    
 				setState(228);
 				((CompareStmtContext)_localctx).elseBlock = blockStmt();
@@ -1990,8 +1987,11 @@ public class NoVwlsParser extends Parser {
 
 
 			        // Handle case with no else clause
-			        if (!hasElse) {
+			        if (_localctx.code == null) {
 			            currentBlock = getCurrentBlock();
+			            
+			            // Jump to end after then block (since no else)
+			            emit(currentBlock, "    j " + ifEnd, true);
 			            emit(currentBlock, ifEnd + ":", true);
 			            
 			            // End the code block and get the result

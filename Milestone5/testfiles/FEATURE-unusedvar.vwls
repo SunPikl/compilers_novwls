@@ -1,0 +1,29 @@
+// Additional Program to show our features of unused code detections
+
+//create variable
+nt aa = 10; //warning should print
+
+f(2 > 3){
+    nt cc = 3; //warning should print
+}
+
+Fnctn nt test(){
+    nt dd = 1; //warning should print
+    rtn 2;
+}
+
+nt ee = 1;
+whl( ee != 2){
+    strng ff = "hi";
+    ee = 2;
+}
+
+
+/*
+    Implementation
+
+When printing error diagnostics, our code skims through all possible symbols used in our program. 
+In compilation, our program will give the user a warning regarding this lack of variable use. 
+This also applies to variables in block statements, such as conditionals, loops, and functions.
+
+*/
