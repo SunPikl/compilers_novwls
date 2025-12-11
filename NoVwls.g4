@@ -1067,7 +1067,7 @@ printExpr [String register] returns [StringBuilder code, String type, String fin
         }
     };
 
-compareStmt returns [StringBuilder code] : 
+    compareStmt returns [StringBuilder code] : 
     KW_F '(' comp=comparison["a0"] ')'
     {
         String ifTrue = generateLabel("if_true");
@@ -1085,26 +1085,23 @@ compareStmt returns [StringBuilder code] :
     }
     thenBlock=blockStmt
     {
+        // Get the current code block after then block
         StringBuilder currentBlock = getCurrentBlock();
-        
-        // Check if there's an else clause
-        boolean hasElse = false; // We'll track this
     }
     (KW_LS
     {
-        // Else clause exists
+        // Else clause exists - jump to skip else block
         String elseLabel = generateLabel("else");
-        currentBlock = getCurrentBlock();
+        StringBuilder currentBlock = getCurrentBlock();
         
-        // Jump to end of if (skip else)
+        // Jump to end of if (skip else block)
         emit(currentBlock, "    j " + ifEnd, true);
         emit(currentBlock, elseLabel + ":", true);
-        hasElse = true;
     }
     elseBlock=blockStmt 
     {
         // End of else block
-        currentBlock = getCurrentBlock();
+        StringBuilder currentBlock = getCurrentBlock();
         emit(currentBlock, ifEnd + ":", true);
         
         // End the code block and get the result
@@ -1113,8 +1110,11 @@ compareStmt returns [StringBuilder code] :
     )?
     {
         // Handle case with no else clause
-        if (!hasElse) {
-            currentBlock = getCurrentBlock();
+        if ($code == null) {
+            StringBuilder currentBlock = getCurrentBlock();
+            
+            // Jump to end after then block (since no else)
+            emit(currentBlock, "    j " + ifEnd, true);
             emit(currentBlock, ifEnd + ":", true);
             
             // End the code block and get the result
