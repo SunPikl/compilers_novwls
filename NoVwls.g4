@@ -603,10 +603,10 @@ stmt returns [StringBuilder code] :
     | arrayAssignStmt 
     | printStmt { $code = $printStmt.code; }
     | compareStmt { $code = $compareStmt.code; }
-    | functStmt 
+    | functStmt { function_emit($functStmt.code.toString()); }
     | loopStmt { $code = $loopStmt.code; }
     | breakStmt 
-    | functCall SCOLN 
+    | functCall SCOLN { $code = $functCall.code; }
 //    | functDefine 
     | comment 
     | arrayDeclWithSize;
@@ -1123,7 +1123,7 @@ printExpr [String register] returns [StringBuilder code, String type, String fin
     }
     ;
 
-functStmt : KW_FNCTN d=dataType a=DNT 
+functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT 
     {
         Identifier function = new Identifier();
         function.id = $a.getText();
@@ -1149,11 +1149,12 @@ functStmt : KW_FNCTN d=dataType a=DNT
             }
         }
 
-        function_emit($a.text + ":");
-        text_emit("    .globl " + $a.text);
+        $code = new StringBuilder();
+
+        emit($code, $a.text + ":");
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
-        function_emit("    addi sp,sp,-16");
+        //function_emit("    addi sp,sp,-16");
     }
     '(' (dt=dataType b=DNT 
     {
@@ -1261,17 +1262,17 @@ functStmt : KW_FNCTN d=dataType a=DNT
         
         
     }
-    stmt*
+    (stmt
     {
         if($stmt.code != null){
-            function_emit($stmt.code.toString());
+            emit($code, $stmt.code.toString());
         }
         
-    } 
+    })* 
     KW_RTN
     {
-        function_emit("    addi sp,sp,16");
-        function_emit("    ret");
+        //function_emit("    addi sp,sp,16");
+        emit($code,"    ret");
     } factor["fa0"] SCOLN '}'
     {
         //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
@@ -2177,15 +2178,16 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             // if($functCall.type.equals("strng") || $functCall.type.equals("chr")){
             //     $code = "" + $content;
             // } else $code = "" + $value;
-            //$code = $functCall.code;
+            $code = $functCall.code;
             
         }
     ;
 
-functCall returns [boolean hasKnownValue, String type, float value, String content, String code]: 
+functCall returns [boolean hasKnownValue, String type, float value, String content, StringBuilder code]: 
     DNT '('
     {
-        text_emit("    call "+$DNT.text);
+        $code = new StringBuilder();
+        emit($code,"    call "+$DNT.text);
         String id = $DNT.getText();
         used.add(id);
         Identifier currentId = null;
@@ -2275,7 +2277,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
 
             paramCount ++;
             
-            $code += ", " + $p.code;
+            $code.append(", " + $p.code);
         }
       )*
     )? ')'
@@ -2293,7 +2295,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         $content = currentId.content;
         $hasKnownValue = currentId.hasKnown;
         
-        $code += ")";
+        //$code.append(")");
     }
     ;
 functDefine: KW_FNCTN d=dataType a=DNT 

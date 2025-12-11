@@ -1,0 +1,16 @@
+Fnctn nt test(){
+    prnt("A");
+    rtn 1;
+}
+Fnctn nt test2(){
+    test();
+    prnt("B");
+    test();
+    prnt("E");
+    rtn 1;
+}
+
+
+test2();
+prnt("C");
+prnt("D");
