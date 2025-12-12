@@ -1,0 +1,15 @@
+// Simple test program
+flt income = scnFLT;
+flt rate = 0.0;
+
+// Simple if test
+f(income >= 50000) {
+    rate = 0.2;
+    prnt("high income");
+} ls {
+    rate = 0.1;
+    prnt("low income");
+}
+
+flt tax = rate * income;
+prnt("tax: ", tax);
