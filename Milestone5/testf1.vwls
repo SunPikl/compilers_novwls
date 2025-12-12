@@ -1,16 +1,19 @@
-Fnctn nt test(){
-    prnt("A");
+Fnctn nt test(flt x){
+    prnt("x");
+    prnt(x);
     rtn 1;
 }
-Fnctn nt test2(){
-    test();
+Fnctn nt test2(flt a, flt b){
+    test(1.0);
     prnt("B");
-    test();
+    test(2.0);
     prnt("E");
+    //test(1+2);
+    prnt("end");
     rtn 1;
 }
 
-
-test2();
+test(5.0);
+//test2(3,4);
 prnt("C");
 prnt("D");

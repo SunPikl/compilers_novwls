@@ -12,6 +12,7 @@ grammar NoVwls;
         String type;  //type
         boolean hasKnown; // Is  value known or not
         boolean hasBeenUsed;  // Has id been used 
+        int offset = -1; // where on the stack
 
         //function
         boolean isFunction = false; //if DNT is a function
@@ -167,6 +168,7 @@ grammar NoVwls;
         if (newLine) { sb.append("\n"); }
     }
     void emit(StringBuilder sb, String s) { emit(sb, s, true); }
+    void emit(StringBuilder sb, StringBuilder sb2) { sb.append(sb2); }
     void data_emit(String s) { emit(data_sb, s); }
     void text_emit(String s) { emit(text_sb, s); } 
     void function_emit(String s) { emit(function_sb, s); }
@@ -347,20 +349,27 @@ grammar NoVwls;
         return code;
     }
 
-    StringBuilder generateLoadId(String register, String id, String type) {
+    StringBuilder generateLoadId(String register, Identifier ident, String type) {
         StringBuilder code = new StringBuilder();
+        String id = ident.id;
         String label = ID_PREFIX + id;
-        emit(code, "    # Loading id " + id + " into register " + register); 
-        emit(code, "    la " + "t0," + label); 
-        if(register.startsWith("f")) {
-            emit(code, "    fld " + register + ", 0(t0)");
-        } else if(type.equals("chr")){
-            emit(code, "    lb " + register + ", 0(t0)");
-        } else {
-            emit(code, "    lw " + register + ", 0(t0)");
+        if(ident.offset == -1){
+            emit(code, "    # Loading id " + id + " into register " + register); 
+            emit(code, "    la " + "t0," + label); 
+            if(register.startsWith("f")) {
+                emit(code, "    fld " + register + ", 0(t0)");
+            } else if(type.equals("chr")){
+                emit(code, "    lb " + register + ", 0(t0)");
+            } else {
+                emit(code, "    lw " + register + ", 0(t0)");
+            }
+            emit(code, "    ");
+            System.out.println("DEBUG: load id " + id + " into register " + register);
+        }else{
+            int stackOffset = 4+(ident.parameters.size()-ident.offset-1)*8; //calc identifier place in stack
+            emit(code, "    fld "+register+", "+stackOffset+"(sp)");
         }
-        emit(code, "    ");
-        System.out.println("DEBUG: load id " + id + " into register " + register);
+        
         return code;
     }
 
@@ -1154,7 +1163,9 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
         emit($code, $a.text + ":");
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
-        //function_emit("    addi sp,sp,-16");
+        emit($code,"    addi sp,sp,-4");
+        emit($code,"    sw ra,0(sp)");
+
     }
     '(' (dt=dataType b=DNT 
     {
@@ -1165,7 +1176,7 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
         firstP.id = $b.getText();
         firstP.hasKnown = false;
         firstP.hasBeenUsed = false;
-        
+        firstP.offset = 0;
         if ($dt.type.endsWith("[]")) {
             firstP.isArray = true;
         }
@@ -1195,6 +1206,7 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
         nextP.id = $c.getText();
         nextP.hasKnown = false;
         nextP.hasBeenUsed = false;
+        nextP.offset = function.parameters.size();
 
         // ADD THIS FIX: Check if the parameter is an array
         if ($dt2.type.endsWith("[]")) {
@@ -1271,7 +1283,8 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
     })* 
     KW_RTN
     {
-        //function_emit("    addi sp,sp,16");
+        emit($code,"    lw ra,0(sp)");
+        emit($code,"    addi sp,sp," + (4+8*function.parameters.size()));
         emit($code,"    ret");
     } factor["fa0"] SCOLN '}'
     {
@@ -2142,7 +2155,7 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             }
 
             $finReg = $register;
-            $code = generateLoadId($finReg, id, $type);
+            $code = generateLoadId($finReg, currentId, $type);
         }
     | arrayAccess
         {
@@ -2245,6 +2258,9 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                     if ($p.is2DArray) inputPar.array2DValues = $p.array2DValues;
 
                     //$code += $p.code;
+                    emit($code,$p.code);
+                    emit($code,"    addi sp,sp,-8");
+                    emit($code,"    fsw fa0,0(sp)");
 
                 } else {
                     error($p.start, "The input parameter type '" + $p.type + "' is not the same as parameter type '" + inputPar.type + "'");
