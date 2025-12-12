@@ -42,7 +42,6 @@ grammar NoVwls;
     boolean preexistingLHS = false;
     Scanner scan = new Scanner(System.in);
 
-    int currStackUsage = 0;
 
  // Stack for loop labels to handle nested loops
     Stack<String> loopStartLabels = new Stack<>();
@@ -400,8 +399,8 @@ grammar NoVwls;
         }else{
             emit(code, "    # Loading id " + id + " into register " + register + "from stack"); 
             //emit(code, "    la " + "t0," + label);
-            System.out.println(currStackUsage);
-            int stackOffset =currStackUsage-(4+(ident.offset)*8); //calc identifier place in stack 
+            System.out.println(scopeStack.peek().table.size());
+            int stackOffset =4+(scopeStack.peek().table.size()-ident.offset-2)*8; //calc identifier place in stack 
             if(register.startsWith("f")) {
                 emit(code, "    fld " + register + ", "+stackOffset+"(sp)");
             } else if(type.equals("chr")){
@@ -1206,7 +1205,6 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
         emit($code,"    addi sp,sp,-4");
-        currStackUsage += 4;
         emit($code,"    sw ra,0(sp)");
 
     }
@@ -1327,7 +1325,6 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
     {
         emit($code,"    lw ra,0(sp)");
         emit($code,"    addi sp,sp," + (4+8*function.parameters.size()));
-        currStackUsage -= 4+8*function.parameters.size();
         emit($code,"    ret");
     } factor["fa0"] SCOLN '}'
     {
@@ -2307,7 +2304,6 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                     //$code += $p.code;
                     emit($code,$p.code);
                     emit($code,"    addi sp,sp,-8");
-                    currStackUsage += 8;
                     if($p.type.startsWith("f")) {
                         emit($code,"    fsd fa0,0(sp)");
                     } else if($p.type.equals("chr")){
@@ -2349,7 +2345,6 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
             paramCount ++;
             emit($code,$p.code);
             emit($code,"    addi sp,sp,-8");
-            currStackUsage += 8;
             if($p.type.startsWith("f")) {
                 emit($code,"    fsd fa0,0(sp)");
             } else if($p.type.equals("chr")){
