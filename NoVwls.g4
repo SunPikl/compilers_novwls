@@ -19,6 +19,7 @@ grammar NoVwls;
         boolean isImplemented = false; //if function has been defined
         List<Identifier> parameters = new ArrayList<>();
         StringBuilder storeFunct = new StringBuilder();
+        Identifier parent = null;
         
         List<Object> arrayValues = new ArrayList<>();
         List<List<Object>> array2DValues = new ArrayList<>();
@@ -40,6 +41,8 @@ grammar NoVwls;
     String currLHS = null;
     boolean preexistingLHS = false;
     Scanner scan = new Scanner(System.in);
+
+    int currStackUsage = 0;
 
     public String mapType(String noVwlsType) {
         // Check for array notation and remove it temporarily
@@ -366,8 +369,18 @@ grammar NoVwls;
             emit(code, "    ");
             System.out.println("DEBUG: load id " + id + " into register " + register);
         }else{
-            int stackOffset = 4+(ident.parameters.size()-ident.offset-1)*8; //calc identifier place in stack
-            emit(code, "    fld "+register+", "+stackOffset+"(sp)");
+            emit(code, "    # Loading id " + id + " into register " + register + "from stack"); 
+            //emit(code, "    la " + "t0," + label);
+            System.out.println(currStackUsage);
+            int stackOffset =currStackUsage-(4+(ident.offset)*8); //calc identifier place in stack 
+            if(register.startsWith("f")) {
+                emit(code, "    fld " + register + ", "+stackOffset+"(sp)");
+            } else if(type.equals("chr")){
+                emit(code, "    lb " + register +", "+ stackOffset+"(sp)");
+            } else {
+                emit(code, "    lw " + register +", "+ stackOffset+"(sp)");
+            }
+            //emit(code, "    fld "+register+", "+stackOffset+"(sp)");
         }
         
         return code;
@@ -1164,12 +1177,12 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
 
         //System.out.println("DEBUG: DNT " + $a.getText() + " is " + scopeStack.peek().table.get($a.getText()).id);
         emit($code,"    addi sp,sp,-4");
+        currStackUsage += 4;
         emit($code,"    sw ra,0(sp)");
 
     }
     '(' (dt=dataType b=DNT 
     {
-
         //store arg
         Identifier firstP = new Identifier();
         firstP.type = $dt.type;
@@ -1285,6 +1298,7 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
     {
         emit($code,"    lw ra,0(sp)");
         emit($code,"    addi sp,sp," + (4+8*function.parameters.size()));
+        currStackUsage -= 4+8*function.parameters.size();
         emit($code,"    ret");
     } factor["fa0"] SCOLN '}'
     {
@@ -2200,7 +2214,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
     DNT '('
     {
         $code = new StringBuilder();
-        emit($code,"    call "+$DNT.text);
+        
         String id = $DNT.getText();
         used.add(id);
         Identifier currentId = null;
@@ -2260,7 +2274,15 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
                     //$code += $p.code;
                     emit($code,$p.code);
                     emit($code,"    addi sp,sp,-8");
-                    emit($code,"    fsw fa0,0(sp)");
+                    currStackUsage += 8;
+                    if($p.type.startsWith("f")) {
+                        emit($code,"    fsd fa0,0(sp)");
+                    } else if($p.type.equals("chr")){
+                        emit($code,"    sb a0,0(sp)");
+                    } else {
+                        emit($code,"    sw a0,0(sp)");
+                    }
+                    //emit($code,"    fsw fa0,0(sp)");
 
                 } else {
                     error($p.start, "The input parameter type '" + $p.type + "' is not the same as parameter type '" + inputPar.type + "'");
@@ -2292,8 +2314,17 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
             }
 
             paramCount ++;
-            
-            $code.append(", " + $p.code);
+            emit($code,$p.code);
+            emit($code,"    addi sp,sp,-8");
+            currStackUsage += 8;
+            if($p.type.startsWith("f")) {
+                emit($code,"    fsd fa0,0(sp)");
+            } else if($p.type.equals("chr")){
+                emit($code,"    sb a0,0(sp)");
+            } else {
+                emit($code,"    sw a0,0(sp)");
+            }
+            //$code.append(", " + $p.code);
         }
       )*
     )? ')'
@@ -2312,6 +2343,7 @@ functCall returns [boolean hasKnownValue, String type, float value, String conte
         $hasKnownValue = currentId.hasKnown;
         
         //$code.append(")");
+        emit($code,"    call "+$DNT.text);
     }
     ;
 functDefine: KW_FNCTN d=dataType a=DNT 
