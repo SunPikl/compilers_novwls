@@ -137,13 +137,10 @@ grammar NoVwls;
         // else ret = "" + nextFloatRegister++;
         ret = "" + nextTotRegister;
 
-        // if(nextIntRegister > 7 || nextFloatRegister > 7){
-        //     System.err.println("error: ran out of registers");
-        //     System.exit(1);
-        // } else if(nextTotRegister > 7) {
-        //     System.err.println("error: ran out of registers");
-        //     System.exit(1);
-        // }
+        if(nextTotRegister > 7) {
+            System.err.println("error: ran out of registers");
+            System.exit(1);
+        }
         nextTotRegister++;
 
         return ret;
