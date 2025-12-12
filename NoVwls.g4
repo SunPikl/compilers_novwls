@@ -76,38 +76,6 @@ grammar NoVwls;
         return null;
     }
 
- // Stack for loop labels to handle nested loops
-    Stack<String> loopStartLabels = new Stack<>();
-    Stack<String> loopEndLabels = new Stack<>();
-    
-    void pushLoopLabels(String start, String end) {
-        loopStartLabels.push(start);
-        loopEndLabels.push(end);
-    }
-    
-    String getCurrentLoopStart() {
-        return loopStartLabels.isEmpty() ? null : loopStartLabels.peek();
-    }
-    
-    String getCurrentLoopEnd() {
-        return loopEndLabels.isEmpty() ? null : loopEndLabels.peek();
-    }
-    
-    void popLoopLabels() {
-        if (!loopStartLabels.isEmpty()) loopStartLabels.pop();
-        if (!loopEndLabels.isEmpty()) loopEndLabels.pop();
-    }
-    
-    Identifier lookupIdentifier(String name) {
-        for (int i = scopeStack.size() - 1; i >= 0; i--) {
-            Identifier ident = scopeStack.get(i).table.get(name);
-            if (ident != null) {
-                return ident;
-            }
-        }
-        return null;
-    }
-
     public String mapType(String noVwlsType) {
         // Check for array notation and remove it temporarily
         boolean isArray = noVwlsType.endsWith("[]");
