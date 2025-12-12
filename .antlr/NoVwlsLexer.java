@@ -110,6 +110,7 @@ public class NoVwlsLexer extends Lexer {
 	        String type;  //type
 	        boolean hasKnown; // Is  value known or not
 	        boolean hasBeenUsed;  // Has id been used 
+	        int offset = -1; // where on the stack
 
 	        //function
 	        boolean isFunction = false; //if DNT is a function
@@ -234,13 +235,10 @@ public class NoVwlsLexer extends Lexer {
 	        // else ret = "" + nextFloatRegister++;
 	        ret = "" + nextTotRegister;
 
-	        // if(nextIntRegister > 7 || nextFloatRegister > 7){
-	        //     System.err.println("error: ran out of registers");
-	        //     System.exit(1);
-	        // } else if(nextTotRegister > 7) {
-	        //     System.err.println("error: ran out of registers");
-	        //     System.exit(1);
-	        // }
+	        if(nextTotRegister > 7) {
+	            System.err.println("error: ran out of registers");
+	            System.exit(1);
+	        }
 	        nextTotRegister++;
 
 	        return ret;
@@ -265,6 +263,7 @@ public class NoVwlsLexer extends Lexer {
 	        if (newLine) { sb.append("\n"); }
 	    }
 	    void emit(StringBuilder sb, String s) { emit(sb, s, true); }
+	    void emit(StringBuilder sb, StringBuilder sb2) { sb.append(sb2); }
 	    void data_emit(String s) { emit(data_sb, s); }
 	    void text_emit(String s) { emit(text_sb, s); } 
 	    void function_emit(String s) { emit(function_sb, s); }
@@ -445,20 +444,27 @@ public class NoVwlsLexer extends Lexer {
 	        return code;
 	    }
 
-	    StringBuilder generateLoadId(String register, String id, String type) {
+	    StringBuilder generateLoadId(String register, Identifier ident, String type) {
 	        StringBuilder code = new StringBuilder();
+	        String id = ident.id;
 	        String label = ID_PREFIX + id;
-	        emit(code, "    # Loading id " + id + " into register " + register); 
-	        emit(code, "    la " + "t0," + label); 
-	        if(register.startsWith("f")) {
-	            emit(code, "    fld " + register + ", 0(t0)");
-	        } else if(type.equals("chr")){
-	            emit(code, "    lb " + register + ", 0(t0)");
-	        } else {
-	            emit(code, "    lw " + register + ", 0(t0)");
+	        if(ident.offset == -1){
+	            emit(code, "    # Loading id " + id + " into register " + register); 
+	            emit(code, "    la " + "t0," + label); 
+	            if(register.startsWith("f")) {
+	                emit(code, "    fld " + register + ", 0(t0)");
+	            } else if(type.equals("chr")){
+	                emit(code, "    lb " + register + ", 0(t0)");
+	            } else {
+	                emit(code, "    lw " + register + ", 0(t0)");
+	            }
+	            emit(code, "    ");
+	            System.out.println("DEBUG: load id " + id + " into register " + register);
+	        }else{
+	            int stackOffset = 4+(ident.parameters.size()-ident.offset-1)*8; //calc identifier place in stack
+	            emit(code, "    fld "+register+", "+stackOffset+"(sp)");
 	        }
-	        emit(code, "    ");
-	        System.out.println("DEBUG: load id " + id + " into register " + register);
+	        
 	        return code;
 	    }
 

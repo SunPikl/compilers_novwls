@@ -44,6 +44,70 @@ grammar NoVwls;
 
     int currStackUsage = 0;
 
+ // Stack for loop labels to handle nested loops
+    Stack<String> loopStartLabels = new Stack<>();
+    Stack<String> loopEndLabels = new Stack<>();
+    
+    void pushLoopLabels(String start, String end) {
+        loopStartLabels.push(start);
+        loopEndLabels.push(end);
+    }
+    
+    String getCurrentLoopStart() {
+        return loopStartLabels.isEmpty() ? null : loopStartLabels.peek();
+    }
+    
+    String getCurrentLoopEnd() {
+        return loopEndLabels.isEmpty() ? null : loopEndLabels.peek();
+    }
+    
+    void popLoopLabels() {
+        if (!loopStartLabels.isEmpty()) loopStartLabels.pop();
+        if (!loopEndLabels.isEmpty()) loopEndLabels.pop();
+    }
+    
+    Identifier lookupIdentifier(String name) {
+        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+            Identifier ident = scopeStack.get(i).table.get(name);
+            if (ident != null) {
+                return ident;
+            }
+        }
+        return null;
+    }
+
+ // Stack for loop labels to handle nested loops
+    Stack<String> loopStartLabels = new Stack<>();
+    Stack<String> loopEndLabels = new Stack<>();
+    
+    void pushLoopLabels(String start, String end) {
+        loopStartLabels.push(start);
+        loopEndLabels.push(end);
+    }
+    
+    String getCurrentLoopStart() {
+        return loopStartLabels.isEmpty() ? null : loopStartLabels.peek();
+    }
+    
+    String getCurrentLoopEnd() {
+        return loopEndLabels.isEmpty() ? null : loopEndLabels.peek();
+    }
+    
+    void popLoopLabels() {
+        if (!loopStartLabels.isEmpty()) loopStartLabels.pop();
+        if (!loopEndLabels.isEmpty()) loopEndLabels.pop();
+    }
+    
+    Identifier lookupIdentifier(String name) {
+        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+            Identifier ident = scopeStack.get(i).table.get(name);
+            if (ident != null) {
+                return ident;
+            }
+        }
+        return null;
+    }
+
     public String mapType(String noVwlsType) {
         // Check for array notation and remove it temporarily
         boolean isArray = noVwlsType.endsWith("[]");
@@ -140,13 +204,10 @@ grammar NoVwls;
         // else ret = "" + nextFloatRegister++;
         ret = "" + nextTotRegister;
 
-        // if(nextIntRegister > 7 || nextFloatRegister > 7){
-        //     System.err.println("error: ran out of registers");
-        //     System.exit(1);
-        // } else if(nextTotRegister > 7) {
-        //     System.err.println("error: ran out of registers");
-        //     System.exit(1);
-        // }
+        if(nextTotRegister > 7) {
+            System.err.println("error: ran out of registers");
+            System.exit(1);
+        }
         nextTotRegister++;
 
         return ret;
@@ -1338,102 +1399,77 @@ loopStmt returns [StringBuilder code] :
 //While loop - FIXED structure
 whileLoop returns [StringBuilder code] : 
     KW_WHL 
-    L_PRNTH 
     {
         String loopStart = generateLabel("while_start");
         String loopEnd = generateLabel("while_end");
+        pushLoopLabels(loopStart, loopEnd);
         
-        // Start a new code block for the loop
         StringBuilder loopCode = startCodeBlock();
         
-        // Emit loop start label
         emit(loopCode, loopStart + ":", true);
-        emit(loopCode, "    # While loop condition", true);
     }
-    comp=comparison["a0"]
+    L_PRNTH comp=comparison["a0"] R_PRNTH 
     {
-        // Get the comparison code
-        StringBuilder currentBlock = getCurrentBlock();
-        currentBlock.append($comp.code.toString());
-        
+        loopCode = getCurrentBlock();  
+        loopCode.append($comp.code.toString());
         // Branch if false (0) to end
-        emit(currentBlock, "    beqz a0, " + loopEnd, true);
+        emit(loopCode, "    beqz a0, " + loopEnd, true);
     }
-    R_PRNTH 
     body=blockStmt
     {
-        // Get the loop code block
-        loopCode = getCurrentBlock();
-        
-        // Add jump back to start
+        loopCode = getCurrentBlock();  
         emit(loopCode, "    j " + loopStart, true);
         emit(loopCode, loopEnd + ":", true);
-        emit(loopCode, "    # End while loop", true);
         
-        // End the code block and get the result
+        popLoopLabels();
         $code = new StringBuilder(endCodeBlock());
-    }
-    ;
+    };
 
 // For loop - FIXED structure
 forLoop returns [StringBuilder code] : 
-    KW_FR 
-    L_PRNTH
+    KW_FR L_PRNTH
     {
         String loopStart = generateLabel("for_start");
         String loopCond = generateLabel("for_cond");
         String loopEnd = generateLabel("for_end");
         String loopIncr = generateLabel("for_incr");
+        pushLoopLabels(loopStart, loopEnd);
         
-        // Start a new code block for the for loop
+        // Start a new code block
         StringBuilder forCode = startCodeBlock();
     } 
-    (init=assignStmt | SCOLN)    // initialization
+    (init=assignStmt { 
+        // Initialization code
+        getCurrentBlock().append($init.code.toString());
+    })? SCOLN    // initialization (optional)
     {
-        StringBuilder currentBlock = getCurrentBlock();
-        if ($init.code != null) {
-            currentBlock.append($init.code.toString());
-        }
-        emit(currentBlock, "    j " + loopCond, true);
-        emit(currentBlock, loopStart + ":", true);
-        emit(currentBlock, "    # For loop body", true);
+        // Jump to condition check first
+        emit(getCurrentBlock(), "    j " + loopCond, true);
+        emit(getCurrentBlock(), loopStart + ":", true);
     }
     body=blockStmt
     {
-        currentBlock = getCurrentBlock();
-        emit(currentBlock, loopIncr + ":", true);
-        emit(currentBlock, "    # Loop increment", true);
+        emit(getCurrentBlock(), loopIncr + ":", true);
     }
-    (incr=forLoopInc)?      // increment
+    (incr=forLoopInc { 
+        // Increment code
+        getCurrentBlock().append($incr.code.toString());
+    })? SCOLN      // increment (optional)
     {
-        currentBlock = getCurrentBlock();
-        if ($incr.code != null) {
-            currentBlock.append($incr.code.toString());
-        }
-        emit(currentBlock, "    # Jump to condition", true);
+        emit(getCurrentBlock(), loopCond + ":", true);
     }
-    R_PRNTH 
+    comp=comparison["a0"] R_PRNTH         // condition 
     {
-        currentBlock = getCurrentBlock();
-        emit(currentBlock, loopCond + ":", true);
-    }
-    comp=comparison["a0"] SCOLN         // condition 
-    {
-        currentBlock = getCurrentBlock();
+        StringBuilder currentBlock = getCurrentBlock();
         currentBlock.append($comp.code.toString());
+        // If condition true, go to loop body
         emit(currentBlock, "    bnez a0, " + loopStart, true);
         emit(currentBlock, "    j " + loopEnd, true);
-        emit(currentBlock, "    # Condition check done", true);
-    }
-    {
-        currentBlock = getCurrentBlock();
         emit(currentBlock, loopEnd + ":", true);
-        emit(currentBlock, "    # End for loop", true);
         
-        // End the code block and get the result
+        popLoopLabels();
         $code = new StringBuilder(endCodeBlock());
-    }
-    ;
+    };
 
 // Do-While loop  
 doWhileLoop returns [StringBuilder code] : 
@@ -1441,40 +1477,39 @@ doWhileLoop returns [StringBuilder code] :
     {
         String loopStart = generateLabel("do_while_start");
         String loopEnd = generateLabel("do_while_end");
+        pushLoopLabels(loopStart, loopEnd);
         
-        // Start a new code block
         StringBuilder doWhileCode = startCodeBlock();
         
-        emit(getCurrentBlock(), loopStart + ":", true);
-        emit(getCurrentBlock(), "    # Do-while loop body", true);
+        emit(doWhileCode, loopStart + ":", true);
     }
     body=blockStmt
     KW_WHL L_PRNTH comp=comparison["a0"] R_PRNTH SCOLN 
     {
         StringBuilder currentBlock = getCurrentBlock();
         currentBlock.append($comp.code.toString());
-        
         // Check condition - if true (non-zero), loop back
         emit(currentBlock, "    bnez a0, " + loopStart, true);
         emit(currentBlock, loopEnd + ":", true);
-        emit(currentBlock, "    # End do-while loop", true);
         
-        // End the code block and get the result
+        popLoopLabels();
         $code = new StringBuilder(endCodeBlock());
-    }
-    ;
+    };
 
 // Break statement
 breakStmt returns [StringBuilder code] : 
     KW_BRK SCOLN 
     {
-        // TODO: Need to track which loop we're breaking from
-        // For now, just generate a comment
         StringBuilder breakCode = new StringBuilder();
-        emit(breakCode, "    # break statement - not yet implemented", true);
+        String endLabel = getCurrentLoopEnd();
+        if (endLabel != null) {
+            emit(breakCode, "    j " + endLabel, true);
+        } else {
+            emit(breakCode, "    # error: break outside loop", true);
+            error($KW_BRK, "break statement outside loop");
+        }
         $code = breakCode;
-    }
-    ;
+    };
 
 comment :  CMMNT_LN | CMMNT_BLCK ; 
 elseC : KW_LS blockStmt; 
@@ -1485,35 +1520,65 @@ forLoopInc returns [StringBuilder code] :
     { 
         $code = $inc.code;
     }
-    | DNT INC  // x++
+    | id=DNT INC  // x++
     {
-        // Generate x++ in RISC-V
         StringBuilder incCode = new StringBuilder();
-        emit(incCode, "    # Increment " + $DNT.getText() + "++", true);
+        Identifier ident = lookupIdentifier($id.getText());
         
-        // Load variable
-        emit(incCode, "    la t0, IDX" + $DNT.getText(), true);
-        emit(incCode, "    lw t1, 0(t0)", true);
-        emit(incCode, "    addi t1, t1, 1", true);
-        emit(incCode, "    sw t1, 0(t0)", true);
-        
-        $code = incCode;
+        if (ident == null) {
+            error($id, "variable '" + $id.getText() + "' not declared");
+            $code = incCode;
+        } else {
+            emit(incCode, "    # Increment " + $id.getText() + "++", true);
+            
+            // Load variable based on type
+            String label = ID_PREFIX + $id.getText();
+            emit(incCode, "    la t0, " + label, true);
+            
+            if (ident.type.equals("flt")) {
+                emit(incCode, "    fld ft1, 0(t0)", true);
+                emit(incCode, "    li t1, 1", true);
+                emit(incCode, "    fcvt.d.w ft2, t1", true);
+                emit(incCode, "    fadd.d ft1, ft1, ft2", true);
+                emit(incCode, "    fsd ft1, 0(t0)", true);
+            } else {
+                emit(incCode, "    lw t1, 0(t0)", true);
+                emit(incCode, "    addi t1, t1, 1", true);
+                emit(incCode, "    sw t1, 0(t0)", true);
+            }
+            
+            $code = incCode;
+        }
     }
-    | DNT DCR  // x--
+    | id=DNT DCR  // x--
     {
-        // Generate x-- in RISC-V
         StringBuilder incCode = new StringBuilder();
-        emit(incCode, "    # Decrement " + $DNT.getText() + "--", true);
+        Identifier ident = lookupIdentifier($id.getText());
         
-        // Load variable
-        emit(incCode, "    la t0, IDX" + $DNT.getText(), true);
-        emit(incCode, "    lw t1, 0(t0)", true);
-        emit(incCode, "    addi t1, t1, -1", true);
-        emit(incCode, "    sw t1, 0(t0)", true);
-        
-        $code = incCode;
-    }
-    ;
+        if (ident == null) {
+            error($id, "variable '" + $id.getText() + "' not declared");
+            $code = incCode;
+        } else {
+            emit(incCode, "    # Decrement " + $id.getText() + "--", true);
+            
+            String label = ID_PREFIX + $id.getText();
+            emit(incCode, "    la t0, " + label, true);
+            
+            if (ident.type.equals("flt")) {
+                emit(incCode, "    fld ft1, 0(t0)", true);
+                emit(incCode, "    li t1, 1", true);
+                emit(incCode, "    fcvt.d.w ft2, t1", true);
+                emit(incCode, "    fsub.d ft1, ft1, ft2", true);
+                emit(incCode, "    fsd ft1, 0(t0)", true);
+            } else {
+                emit(incCode, "    lw t1, 0(t0)", true);
+                emit(incCode, "    addi t1, t1, -1", true);
+                emit(incCode, "    sw t1, 0(t0)", true);
+            }
+            
+            $code = incCode;
+        }
+    };
 
 expr[String register] returns [boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, StringBuilder code, String finReg]: 
         a=factor [$register]
