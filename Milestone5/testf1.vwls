@@ -1,23 +1,16 @@
 nt t = 99;
-Fnctn nt test(nt y,nt x){
-    prnt("x");
+Fnctn flt test(flt y,flt x){
     prnt(x);
     prnt(y);
-    prnt(x+y);
-    rtn 1;
+    flt i = x+y;
+    rtn i;
 }
-/*Fnctn nt test2(nt a, nt b){
-    test('l',a+b,7);
-    prnt(a);
-    test('q',2,4);
-    prnt(b);
-    //test(1+2);
-    prnt("end");
-    rtn 1;
-}*/
 
-test(20,10+10);
-//test2(3,4);
+flt c = test(20.0,10.0+10.0);
+flt k = 9.8;
+prnt(c);
+prnt(i);
 prnt("C");
 prnt("D");
 prnt(t);
+prnt(k);
