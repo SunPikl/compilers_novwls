@@ -1321,28 +1321,39 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
         }
         
     })* 
-    KW_RTN
+    KW_RTN expr["fa0"] SCOLN '}'
     {
+        if($expr.type.equals("nt") || $expr.type.equals("bl") || $expr.type.equals("chr")) {
+            if(!$expr.finReg.equals("a0")) {
+                emit($code, "    mv a0, " +$expr.finReg);
+            }
+        } else if($expr.type.equals("flt")) {
+            if(!$expr.finReg.equals("fa0")) {
+                emit($code, "    fmv.d fa0, " +$expr.finReg);
+            }
+        } else if($expr.type.equals("strng")) {
+            if(!$expr.finReg.equals("a0")) {
+                emit($code, "    mv a0, " +$expr.finReg);
+            }
+        }
         emit($code,"    lw ra,0(sp)");
         emit($code,"    addi sp,sp," + (4+8*function.parameters.size()));
         emit($code,"    ret");
-    } factor["fa0"] SCOLN '}'
-    {
-        //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $factor.type);
+        //System.out.println("DEBUG: type of funct:" + $d.type + " type of factor:" + $expr.type);
         String returnVal = "String ";
         
         //attach funct value 
-        if(!($d.type.equals($factor.type))){
+        if(!($d.type.equals($expr.type))){
             //is not returning same data type
-            error($factor.start, "Type incompatability between function (" + $d.type + ") and return value (" + $factor.type +")");
+            error($expr.start, "Type incompatability between function (" + $d.type + ") and return value (" + $expr.type +")");
         } else {
-            if(($factor.type.equals("strng") || $factor.type.equals("chr"))){
-                scopeStack.peek().table.get($a.getText()).content = $factor.content;
+            if(($expr.type.equals("strng") || $expr.type.equals("chr"))){
+                scopeStack.peek().table.get($a.getText()).content = $expr.content;
             } else {
-                scopeStack.peek().table.get($a.getText()).value = $factor.value;
+                scopeStack.peek().table.get($a.getText()).value = $expr.value;
             }
             //emit(" in.close();\n", writeTo);
-            //emit("return " + $factor.code + "; \n", writeTo);  
+            //emit("return " + $expr.code + "; \n", writeTo);  
         }
         //end scope
         scopeStack.pop();
@@ -2236,7 +2247,11 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             //     $code = "" + $content;
             // } else $code = "" + $value;
             $code = $functCall.code;
-            
+            if($type.equals("flt")) {
+                $finReg = "fa0";
+            } else {
+                $finReg = "a0";
+            }
         }
     ;
 
