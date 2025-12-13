@@ -1,0 +1,34 @@
+prnt("1D Array Test");
+
+// Declare
+nt arr[3];
+
+// Assign manually
+arr[0] = 100;
+arr[1] = 200;
+arr[2] = 300;
+
+// Access/print
+prnt("Value at index 0: ", arr[0]);
+prnt("Value at index 1: ", arr[1]);
+prnt("Value at index 2: ", arr[2]);
+
+
+prnt("2D Array Test");
+
+// Declare 2x2 grid
+nt grid[2][2];
+
+// Assign manually
+grid[0][0] = 1;
+grid[0][1] = 2;
+
+// Assign manually
+grid[1][0] = 3;
+grid[1][1] = 4;
+
+// Access/print
+prnt("Row 0, Col 0: ", grid[0][0]);
+prnt("Row 0, Col 1: ", grid[0][1]);
+prnt("Row 1, Col 0: ", grid[1][0]);
+prnt("Row 1, Col 1: ", grid[1][1]);

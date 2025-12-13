@@ -101,6 +101,13 @@ grammar NoVwls;
             default: return "null"; // For arrays or other objects
         }
     }
+
+    // Method to get element size for arrays
+    int getElementSize(String type) {
+        if (type.equals("flt")) return 8; // Double/Float
+        if (type.equals("chr")) return 1; // Char
+        return 4; // Int, Bool, String (pointer)
+    } 
     
     //errors
     void error(Token t, String msg) {
@@ -321,6 +328,9 @@ grammar NoVwls;
                     return;
                 } else if(symbol.type.equals("bl")){
                     data_emit(label + ":    .byte 0");
+                    return;
+                } else if(symbol.isArray || symbol.is2DArray){
+                    data_emit(label + ":    .word 0");
                     return;
                 }
             } catch (Exception e){
@@ -664,21 +674,98 @@ stmt returns [StringBuilder code] :
 blockStmt : '{' { scopeStack.push(new SymbolTable()); } (stmt)* '}' { scopeStack.pop(); } ;
 
 arrayDeclWithSize : 
-    dt=primitiveDT id=DNT L_SQBR size=additiveExpr["fa0"] R_SQBR SCOLN 
-    {
-        // Symbol Table Registration
-        Identifier arrayId = new Identifier();
-        arrayId.id = $id.getText();
-        arrayId.type = $dt.type + "[]"; // e.g., "nt[]"
-        arrayId.isArray = true;
-        assigned.add($id.getText());
-        scopeStack.peek().table.put(arrayId.id, arrayId);
-        
-        // Code Generation: int[] arr = new int[size];
-        String javaType = mapType($dt.type); 
-        String arrayType = javaType + "[]"; 
-        //emit("    " + arrayType + " " + $id.getText() + " = new " + javaType + "[" + $size.code + "];\n", writeTo);
-    }
+    dt=primitiveDT id=DNT L_SQBR size1=additiveExpr["a0"] R_SQBR
+    (
+        // Ends in semi colon
+        SCOLN 
+        {
+            // 1D Logic
+            Identifier arrayId = new Identifier();
+            arrayId.id = $id.getText();
+            arrayId.type = $dt.type + "[]";
+            arrayId.isArray = true;
+            assigned.add($id.getText());
+            scopeStack.peek().table.put(arrayId.id, arrayId);
+            
+            StringBuilder sb = getCurrentBlock();
+            
+            // Calculate Total Size
+            emit(sb, $size1.code); // Size -> a0
+            if (!$size1.finReg.equals("a0")) emit(sb, "    mv a0, " + $size1.finReg);
+            
+            int byteSize = getElementSize($dt.type);
+            emit(sb, "    li t1, " + byteSize);
+            emit(sb, "    mul a0, a0, t1"); 
+            
+            // Allocate (sbrk)
+            emit(sb, "    li a7, 9"); 
+            emit(sb, "    ecall");
+            
+            // Store Pointer
+            emit(sb, "    la t1, " + ID_PREFIX + $id.getText());
+            emit(sb, "    sw a0, 0(t1)");
+        }
+    |
+        // Second bracket 
+        L_SQBR size2=additiveExpr["a0"] R_SQBR SCOLN
+        {
+            // 2D Logic
+            Identifier arrayId = new Identifier();
+            arrayId.id = $id.getText();
+            arrayId.type = $dt.type + "[][]";
+            arrayId.is2DArray = true;
+            assigned.add($id.getText());
+            scopeStack.peek().table.put(arrayId.id, arrayId);
+
+            StringBuilder sb = getCurrentBlock();
+            
+            // Labels for the allocation loop
+            String loopStart = generateLabel("alloc_row_start");
+            String loopEnd = generateLabel("alloc_row_end");
+
+            // Allocate Spine
+            emit(sb, $size1.code); // Rows -> a0
+            if (!$size1.finReg.equals("a0")) emit(sb, "    mv a0, " + $size1.finReg);
+            emit(sb, "    mv s1, a0");      // s1 = Total Rows
+            
+            emit(sb, "    slli a0, s1, 2"); // Spine Size = Rows * 4
+            emit(sb, "    li a7, 9");       // sbrk
+            emit(sb, "    ecall");
+            emit(sb, "    mv s2, a0");      // s2 = Spine Base Address
+            
+            // Store Spine Pointer
+            emit(sb, "    la t0, " + ID_PREFIX + $id.getText());
+            emit(sb, "    sw s2, 0(t0)");
+
+            // Calculate Row Size
+            emit(sb, $size2.code); // Cols -> a0
+            if (!$size2.finReg.equals("a0")) emit(sb, "    mv a0, " + $size2.finReg);
+            
+            int elemSize = getElementSize($dt.type);
+            emit(sb, "    li t1, " + elemSize);
+            emit(sb, "    mul s3, a0, t1"); // s3 = Bytes per Row
+
+            // Allocation Loop
+            emit(sb, "    mv t2, zero");    // t2 = Row Index (0)
+            
+            emit(sb, loopStart + ":");
+            emit(sb, "    bge t2, s1, " + loopEnd); 
+            
+            emit(sb, "    mv a0, s3");      // Load Row Size
+            emit(sb, "    li a7, 9");       // sbrk
+            emit(sb, "    ecall");          // a0 = New Row Addr
+            
+            // Store Row Address in Spine
+            emit(sb, "    slli t3, t2, 2"); 
+            emit(sb, "    add t3, s2, t3"); 
+            emit(sb, "    sw a0, 0(t3)");   
+            
+            emit(sb, "    addi t2, t2, 1");
+            emit(sb, "    j " + loopStart);
+            
+            emit(sb, loopEnd + ":");
+        }
+    )
 ;
 
 declareStmt : dt=dataType id=DNT SCOLN 
@@ -909,26 +996,125 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
             $isArray = false;
             $is2DArray = false;
         };
-arrayAssignStmt : lhs=arrayAccess SSGN rightExpr=rhs["fa0"] SCOLN { 
-    
-    Identifier currId = null;
-    for(int i = scopeStack.size()-1; i >= 0; i--){
-        currId = scopeStack.get(i).table.get($lhs.arrayName); 
-        if(currId != null) break;
-    } 
+arrayAssignStmt returns [StringBuilder code] : 
+    // 1D Array Assignment ( arr[index] = val; )
+    id=DNT L_SQBR index=expr["a0"] R_SQBR SSGN r=rhs["fa0"] SCOLN 
+    {
+        $code = new StringBuilder();
+        String name = $id.getText();
+        
+        // Evaluate RHS (the value to assign)
+        emit($code, $r.code);
 
-    if (currId == null) {
-        // FIX: Use $lhs.arrayCtx for the context of the error
-        error($lhs.arrayCtx, "Array '" + $lhs.arrayName + "' used before declaration.");
-    } else if (!currId.isArray) {
-        error($lhs.arrayCtx, "'" + $lhs.arrayName + "' is not an array.");
-    }
+        // Save RHS to stack (preserve it while we calculate the index)
+        emit($code, "    addi sp, sp, -8");
+        if ($r.type.equals("flt")) {
+            emit($code, "    fsd " + $r.finReg + ", 0(sp)");
+        } else {
+            emit($code, "    sw " + $r.finReg + ", 0(sp)");
+        }
 
-    if(currId != null && currId.isArray) {
-        // Code Generation
-        //emit("    " + $lhs.arrayName + "[" + $lhs.indexCode + "] = " + $rightExpr.code + ";\n", writeTo);
+        // Evaluate Index (put result in a0)
+        emit($code, $index.code);
+        if (!$index.finReg.equals("a0")) emit($code, "    mv a0, " + $index.finReg);
+
+        // Calculate Address and Store
+        Identifier currId = lookupIdentifier(name);
+        if (currId == null) {
+            error($id, "Array '" + name + "' used before declaration.");
+        } else if (!currId.isArray) {
+            error($id, "'" + name + "' is not an array.");
+        } else {
+            // Get element size (helper method defined in @members)
+            String rawType = currId.type.replace("[]", "");
+            int elemSize = getElementSize(rawType);
+
+            emit($code, "    # Store to Array: " + name);
+            emit($code, "    la t0, " + ID_PREFIX + name);
+            emit($code, "    lw t0, 0(t0)");       // Load Array Heap Pointer
+            
+            emit($code, "    li t1, " + elemSize);
+            emit($code, "    mul t2, a0, t1");     // Offset = Index * Size
+            emit($code, "    add t0, t0, t2");     // Address = Base + Offset
+
+            // 5. Retrieve RHS from stack and Store to calculated address
+            if ($r.type.equals("flt")) {
+                emit($code, "    fld ft1, 0(sp)");
+                emit($code, "    fsd ft1, 0(t0)");
+            } else if (rawType.equals("chr")) {
+                 emit($code, "    lw t1, 0(sp)");
+                 emit($code, "    sb t1, 0(t0)");
+            } else {
+                emit($code, "    lw t1, 0(sp)");
+                emit($code, "    sw t1, 0(t0)");
+            }
+        }
+        emit($code, "    addi sp, sp, 8"); // Restore stack
     }
-}
+    |
+    // 2D Array Assignment ( arr[row][col] = val; )
+    id2=DNT L_SQBR row=expr["a0"] R_SQBR L_SQBR col=expr["a0"] R_SQBR SSGN r2=rhs["fa0"] SCOLN 
+    {
+        $code = new StringBuilder();
+        String name = $id2.getText();
+
+        // Evaluate RHS
+        emit($code, $r2.code);
+        
+        // Save RHS to stack
+        emit($code, "    addi sp, sp, -8");
+        if ($r2.type.equals("flt")) {
+            emit($code, "    fsd " + $r2.finReg + ", 0(sp)");
+        } else {
+            emit($code, "    sw " + $r2.finReg + ", 0(sp)");
+        }
+
+        // Evaluate Row Index -> t3
+        emit($code, $row.code); 
+        if (!$row.finReg.equals("a0")) emit($code, "    mv a0, " + $row.finReg);
+        emit($code, "    mv t3, a0"); 
+
+        // Evaluate Col Index -> t4
+        emit($code, $col.code);
+        if (!$col.finReg.equals("a0")) emit($code, "    mv a0, " + $col.finReg);
+        emit($code, "    mv t4, a0");
+
+        // Calculate 2D's Pointer of Pointers
+        Identifier currId = lookupIdentifier(name);
+        if (currId == null || !currId.is2DArray) {
+            error($id2, "'" + name + "' is not a 2D array.");
+        } else {
+            String rawType = currId.type.replace("[][]", "");
+            int elemSize = getElementSize(rawType);
+
+            emit($code, "    # Store to 2D Array: " + name);
+            emit($code, "    la t0, " + ID_PREFIX + name);
+            emit($code, "    lw t0, 0(t0)");       // Load Main Table Pointer
+            
+            // Dereference Row Pointer
+            emit($code, "    slli t3, t3, 2");     // RowOffset = RowIndex * 4 bytes
+            emit($code, "    add t0, t0, t3");     // Addr of Row Pointer
+            emit($code, "    lw t0, 0(t0)");       // Load Actual Row Address
+            
+            // Column Offset
+            emit($code, "    li t1, " + elemSize);
+            emit($code, "    mul t4, t4, t1");     // ColOffset = ColIndex * Size
+            emit($code, "    add t0, t0, t4");     // Final Address
+
+            // RHS retireval and storage 
+            if ($r2.type.equals("flt")) {
+                emit($code, "    fld ft1, 0(sp)");
+                emit($code, "    fsd ft1, 0(t0)");
+            } else if (rawType.equals("chr")) {
+                 emit($code, "    lw t1, 0(sp)");
+                 emit($code, "    sb t1, 0(t0)");
+            } else {
+                emit($code, "    lw t1, 0(sp)");
+                emit($code, "    sw t1, 0(t0)");
+            }
+        }
+        emit($code, "    addi sp, sp, 8"); // Restore stack
+    }
 ;
 
 arrayLiteral returns [boolean hasKnownValue, String type, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues]:
@@ -2209,7 +2395,12 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $content = $arrayAccess.content;
             $isArray = false;
             $is2DArray = false;
-            //$code = $arrayAccess.code;
+            $code = $arrayAccess.code;
+            if ($type.equals("flt")) {
+                $finReg = "fa0";
+            } else {
+                $finReg = "a0";
+            }
         }
     | '(' expr[$register] ')'
         { 
@@ -2236,6 +2427,11 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             //     $code = "" + $content;
             // } else $code = "" + $value;
             $code = $functCall.code;
+            if ($type.equals("flt")) {
+                $finReg = "fa0";
+            } else {
+                $finReg = "a0";
+            }
             
         }
     ;
@@ -2465,65 +2661,106 @@ arrayAccess returns [
     boolean is2DArray,
     List<Object> arrayValues,
     List<List<Object>> array2DValues,
-    String code,
+    StringBuilder code,
     String arrayName,
     Token arrayCtx,
     String indexCode
 ]:
-    id=DNT L_SQBR e1=expr["fa0"] R_SQBR                 // 1D (e1 is the index)
+    // 1D Array Access: x = arr[i]
+    id=DNT L_SQBR e1=expr["a0"] R_SQBR
     {
-        // Set context fields
         $arrayName = $id.getText();
-        $arrayCtx = $id; // FIXED: Removed illegal .start property
-        //$indexCode = $e1.code;
-        used.add($arrayName);
+        $arrayCtx = $id;
+        $code = new StringBuilder();
         
-        Identifier currId = null;
-        for(int i = scopeStack.size()-1; i >= 0; i--){
-            currId = scopeStack.get(i).table.get($arrayName);
-            if(currId != null) break;
+        // Calculate Index (Result in a0)
+        emit($code, $e1.code);
+        if (!$e1.finReg.equals("a0")) {
+            emit($code, "    mv a0, " + $e1.finReg);
         }
 
-       
+        // Address Calculation & Load
+        Identifier currId = lookupIdentifier($arrayName);
         if (currId == null) {
             error($id, "Array '" + $arrayName + "' used before declaration.");
-            $type = "null"; // Default safe type
+            $type = "nt"; // Default safe type
         } else if (!currId.isArray) {
             error($id, "'" + $arrayName + "' is not a 1D array.");
-            $type = "null"; // Default safe type
+            $type = "nt";
         } else {
-            $type = currId.type.substring(0, currId.type.length() - 2); 
+            // Determine the element type and size
+            $type = currId.type.substring(0, currId.type.length() - 2); // remove "[]"
+            int elemSize = getElementSize($type); // Helper method
+
+            emit($code, "    # Array Access 1D: " + $arrayName);
+            emit($code, "    la t0, " + ID_PREFIX + $arrayName);
+            emit($code, "    lw t0, 0(t0)");       // Load Base Pointer (Heap Address)
+            
+            emit($code, "    li t1, " + elemSize);
+            emit($code, "    mul t2, a0, t1");     // Offset = Index * ElementSize
+            emit($code, "    add t0, t0, t2");     // Address = Base + Offset
+
+            // Load the Value into Register (a0 or fa0)
+            if ($type.equals("flt")) {
+                emit($code, "    fld fa0, 0(t0)");
+            } else if ($type.equals("chr")) {
+                emit($code, "    lb a0, 0(t0)");
+            } else {
+                emit($code, "    lw a0, 0(t0)");
+            }
         }
-        
-        // Code Generation
-        $code = $arrayName + "[" + $e1.code + "]";
         $hasKnownValue = false;
     }
-| id=DNT L_SQBR e2=expr["fa0"] R_SQBR L_SQBR e3=expr["fa0"] R_SQBR    // 2D (e2, e3 are indices)
+    | 
+    // 2D Array Access: x = arr[row][col]
+    id=DNT L_SQBR e2=expr["a0"] R_SQBR L_SQBR e3=expr["a0"] R_SQBR 
     {
-        // Set context fields
         $arrayName = $id.getText();
-        $arrayCtx = $id; // FIXED: Removed illegal .start property
-        $indexCode = $e2.code + "][" + $e3.code; // Not strictly indexCode, but for internal use
-        used.add($arrayName);
-        
-        Identifier currId = null;
-        for(int i = scopeStack.size()-1; i >= 0; i--){
-            currId = scopeStack.get(i).table.get($arrayName);
-            if(currId != null) break;
-        }
+        $arrayCtx = $id;
+        $code = new StringBuilder();
 
+        // Calculate Indices
+        emit($code, $e2.code); // Row Index -> a0
+        emit($code, "    mv t3, a0"); // Save Row Index to t3
+        
+        emit($code, $e3.code); // Col Index -> a0
+        emit($code, "    mv t4, a0"); // Save Col Index to t4
+
+        // Address Calculation & Load
+        Identifier currId = lookupIdentifier($arrayName);
         if (currId == null) {
             error($id, "Array '" + $arrayName + "' used before declaration.");
-            $type = "null"; 
+            $type = "nt";
         } else if (!currId.is2DArray) {
             error($id, "'" + $arrayName + "' is not a 2D array.");
-            $type = "null"; 
+            $type = "nt";
         } else {
-            $type = currId.type.substring(0, currId.type.length() - 4); 
+            $type = currId.type.substring(0, currId.type.length() - 4); // remove "[][]"
+            int elemSize = getElementSize($type);
+
+            emit($code, "    # Array Access 2D: " + $arrayName);
+            emit($code, "    la t0, " + ID_PREFIX + $arrayName);
+            emit($code, "    lw t0, 0(t0)");       // Load Table Base
+            
+            // Dereference Row Pointer
+            emit($code, "    slli t3, t3, 2");     // RowOffset = RowIndex * 4 bytes
+            emit($code, "    add t0, t0, t3");     // Addr of Row Pointer
+            emit($code, "    lw t0, 0(t0)");       // Load Actual Row Address
+            
+            // Calculate Column Offset
+            emit($code, "    li t1, " + elemSize);
+            emit($code, "    mul t4, t4, t1");     // ColOffset = ColIndex * ElementSize
+            emit($code, "    add t0, t0, t4");     // Final Address
+
+            // Load the Value
+            if ($type.equals("flt")) {
+                emit($code, "    fld fa0, 0(t0)");
+            } else if ($type.equals("chr")) {
+                emit($code, "    lb a0, 0(t0)");
+            } else {
+                emit($code, "    lw a0, 0(t0)");
+            }
         }
-        
-        $code = $arrayName + "[" + $e2.code + "][" + $e3.code + "]";
         $hasKnownValue = false;
     }
 ;
