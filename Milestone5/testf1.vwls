@@ -1,12 +1,12 @@
 nt t = 99;
-Fnctn flt test(flt y,flt x){
+Fnctn nt test(nt y,nt x){
     prnt(x);
     prnt(y);
-    flt i = x+y;
-    rtn i;
+    nt i = x+y;
+    rtn i+100;
 }
 
-flt c = test(20.0,10.0+10.0);
+nt c = test(t,10+10);
 flt k = 9.8;
 prnt(c);
 prnt(i);

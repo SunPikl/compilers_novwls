@@ -1556,6 +1556,7 @@ functStmt returns [StringBuilder code] : KW_FNCTN d=dataType a=DNT
     })* 
     KW_RTN expr["fa0"] SCOLN '}'
     {
+        $code.append($expr.code);
         if($expr.type.equals("nt") || $expr.type.equals("bl") || $expr.type.equals("chr")) {
             if(!$expr.finReg.equals("a0")) {
                 emit($code, "    mv a0, " +$expr.finReg);
@@ -2702,7 +2703,8 @@ functDefine: KW_FNCTN d=dataType a=DNT
 
 dataType returns [String type]:  
     a=primitiveDT { $type = $a.type; }
-    | arrayDT { $type = $arrayDT.type; };
+    | arrayDT { $type = $arrayDT.type; }
+    | primitiveDT L_SQBR R_SQBR { $type = $primitiveDT.type + "[]"; };
 
 primitiveDT returns [String type]: 
     KW_NT { $type = "nt"; }
