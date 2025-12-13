@@ -671,7 +671,22 @@ stmt returns [StringBuilder code] :
     | comment 
     | arrayDeclWithSize;
 
-blockStmt : '{' { scopeStack.push(new SymbolTable()); } (stmt)* '}' { scopeStack.pop(); } ;
+blockStmt returns [StringBuilder code] : 
+    '{' 
+    { 
+        scopeStack.push(new SymbolTable()); 
+        $code = new StringBuilder(); 
+    } 
+    (s=stmt 
+    { 
+        if ($s.code != null) {
+            $code.append($s.code);
+            getCurrentBlock().append($s.code);
+        }
+    }
+    )* '}' 
+    { scopeStack.pop(); } 
+;
 
 arrayDeclWithSize : 
     dt=primitiveDT id=DNT L_SQBR size1=additiveExpr["a0"] R_SQBR
@@ -783,8 +798,8 @@ declareStmt : dt=dataType id=DNT SCOLN
     }
     ;
 
-assignStmt returns [StringBuilder code]: 
-    (dt=dataType)? DNT    
+assignStmt returns [StringBuilder code] : 
+    (dt=dataType)? DNT      
     {
         //taking in id, find if it exists
         currLHS = $DNT.getText();
@@ -908,7 +923,37 @@ assignStmt returns [StringBuilder code]:
         newId.hasBeenUsed = false;
         scopeStack.peek().table.put(newId.id, newId);
         currLHS = null;
-    } SCOLN ;
+    } SCOLN 
+    | arrayAccess SSGN val=rhs["fa0"] SCOLN
+    {
+        $code = new StringBuilder();
+        
+        // This puts the address (e.g., T[i]) into a register like "t0" (based on arrayAccess.finReg)
+        $code.append($arrayAccess.code);
+        
+        emit($code, "    addi sp, sp, -4");
+        emit($code, "    sw " + $arrayAccess.finReg + ", 0(sp)");
+        
+        $code.append($val.code);
+
+        emit($code, "    lw t5, 0(sp)");
+        emit($code, "    addi sp, sp, 4");
+
+        if ($arrayAccess.type.equals("flt")) {
+            // Check if we need to promote an integer result to float
+            if (!$val.finReg.startsWith("f") && !$val.finReg.equals("zero")) {
+                 emit($code, "    fcvt.d.w fa0, " + $val.finReg);
+                 emit($code, "    fsd fa0, 0(t5)");
+            } else {
+                 // Standard Float Store: fsd source, 0(address)
+                 emit($code, "    fsd " + $val.finReg + ", 0(t5)");
+            }
+        } else {
+            // Standard Integer Store: sw source, 0(address)
+            emit($code, "    sw " + $val.finReg + ", 0(t5)");
+        }
+    }
+;
 
 rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String type, float value, String content, boolean isArray, boolean is2DArray, List<Object> arrayValues, List<List<Object>> array2DValues, String codes, String finReg]:
       e = expr[$register]
@@ -996,6 +1041,8 @@ rhs [String register] returns [StringBuilder code, boolean hasKnownValue, String
             $isArray = false;
             $is2DArray = false;
         };
+
+
 arrayAssignStmt returns [StringBuilder code] : 
     // 1D Array Assignment ( arr[index] = val; )
     id=DNT L_SQBR index=expr["a0"] R_SQBR SSGN r=rhs["fa0"] SCOLN 
@@ -1581,42 +1628,43 @@ forLoop returns [StringBuilder code] :
     KW_FR L_PRNTH
     {
         String loopStart = generateLabel("for_start");
-        String loopCond = generateLabel("for_cond");
         String loopEnd = generateLabel("for_end");
-        String loopIncr = generateLabel("for_incr");
         pushLoopLabels(loopStart, loopEnd);
         
         // Start a new code block
-        StringBuilder forCode = startCodeBlock();
+        StringBuilder sb = startCodeBlock();
     } 
     (init=assignStmt { 
-        // Initialization code
-        getCurrentBlock().append($init.code.toString());
-    })? SCOLN    // initialization (optional)
+        sb.append($init.code.toString());
+    } | SCOLN )
     {
-        // Jump to condition check first
-        emit(getCurrentBlock(), "    j " + loopCond, true);
-        emit(getCurrentBlock(), loopStart + ":", true);
+        // Start label for the loop
+        emit(sb, loopStart + ":", true);
     }
+    // 2. Condition: Matches "i < n;"
+    comp=comparison["a0"] SCOLN 
+    {
+        sb.append($comp.code.toString());
+        // If condition is false (0), exit loop
+        emit(sb, "    beqz a0, " + loopEnd, true);
+    }
+    // 3. Increment: Matches "i++" (Optional, no semicolon required)
+    (incr=forLoopInc)? 
+    R_PRNTH
+    // 4. Body: Matches "{ ... }"
     body=blockStmt
     {
-        emit(getCurrentBlock(), loopIncr + ":", true);
-    }
-    (incr=forLoopInc { 
-        // Increment code
-        getCurrentBlock().append($incr.code.toString());
-    })? SCOLN      // increment (optional)
-    {
-        emit(getCurrentBlock(), loopCond + ":", true);
-    }
-    comp=comparison["a0"] R_PRNTH         // condition 
-    {
-        StringBuilder currentBlock = getCurrentBlock();
-        currentBlock.append($comp.code.toString());
-        // If condition true, go to loop body
-        emit(currentBlock, "    bnez a0, " + loopStart, true);
-        emit(currentBlock, "    j " + loopEnd, true);
-        emit(currentBlock, loopEnd + ":", true);
+        // Append body code
+        // (Note: The body code is already in sb because blockStmt appends to current block)
+        
+        // Append Increment code AFTER the body
+        if ($incr.code != null) {
+            sb.append($incr.code.toString());
+        }
+
+        // Jump back to start to re-evaluate condition
+        emit(sb, "    j " + loopStart, true);
+        emit(sb, loopEnd + ":", true);
         
         popLoopLabels();
         $code = new StringBuilder(endCodeBlock());
@@ -1775,7 +1823,6 @@ comparison [String register] returns [boolean hasKnownValue, float value, String
         $hasKnownValue = $a.hasKnownValue;
         $value = $a.value;
     };
-
 comparisonExpr[String register] returns [boolean hasKnownValue, String type, float value, StringBuilder code, String finReg] : 
     a=additiveExpr[$register] 
     {  
@@ -1815,7 +1862,7 @@ comparisonExpr[String register] returns [boolean hasKnownValue, String type, flo
                 } else if ($type.equals("nt") && $b.type.equals("nt")) {
                     emit($code, "    slt " + $finReg + ", " + $finReg + ", " + $b.finReg );
                 } else if ($type.equals("flt") && $b.type.equals("flt")) {
-                    String diffReg = getNewRegister("nt");
+                    String diffReg = "a" + getNewRegister("nt");
                     emit($code, "    flt.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
                     $finReg = diffReg;
                 }
@@ -1837,7 +1884,7 @@ comparisonExpr[String register] returns [boolean hasKnownValue, String type, flo
                 } else if ($type.equals("nt") && $b.type.equals("nt")) {
                     emit($code, "    slt " + $finReg + ", " + $b.finReg + ", " + $finReg );
                 } else if ($type.equals("flt") && $b.type.equals("flt")) {
-                    String diffReg = getNewRegister("nt");
+                    String diffReg = "a" + getNewRegister("nt");
                     emit($code, "    flt.d " + diffReg + ", " + $b.finReg + ", " + $finReg );
                     $finReg = diffReg;
                 }
@@ -1859,7 +1906,7 @@ comparisonExpr[String register] returns [boolean hasKnownValue, String type, flo
                     emit($code, "    xor  t0, " + $finReg + ", " + $b.finReg );
                     emit($code, "    slti " + $finReg +", t0, 1");
                 } else if ($type.equals("flt") && $b.type.equals("flt")) {
-                    String diffReg = getNewRegister("nt");
+                    String diffReg = "a" + getNewRegister("nt");
                     emit($code, "    feq.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
                     $finReg = diffReg;
                 }
@@ -1882,7 +1929,7 @@ comparisonExpr[String register] returns [boolean hasKnownValue, String type, flo
                     emit($code, "    slt t1, " + $b.finReg + ", " + $finReg ); //a > b
                     emit($code, "    xori " + $finReg + ", t1, 1"); //invert so a <= b
                 } else if ($type.equals("flt") && $b.type.equals("flt")) {
-                    String diffReg = getNewRegister("nt");
+                    String diffReg = "a" + getNewRegister("nt");
                     emit($code, "    fle.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
                     $finReg = diffReg;
                 }
@@ -1905,7 +1952,7 @@ comparisonExpr[String register] returns [boolean hasKnownValue, String type, flo
                     emit($code, "    slt t1, " + $finReg + ", " + $b.finReg ); //a < b
                     emit($code, "    xori " + $finReg + ", t1, 1"); //invert so a >= b
                 } else if ($type.equals("flt") && $b.type.equals("flt")) {
-                    String diffReg = getNewRegister("nt");
+                    String diffReg = "a" + getNewRegister("nt");
                     emit($code, "    fle.d " + diffReg + ", " + $b.finReg + ", " + $finReg );
                     $finReg = diffReg;
                 }
@@ -1930,7 +1977,7 @@ comparisonExpr[String register] returns [boolean hasKnownValue, String type, flo
                     emit($code, "    slti " + $finReg +", t0, 1");
                     emit($code, "    xori " + $finReg + ", " + $finReg + ", 1");
                 } else if ($type.equals("flt") && $b.type.equals("flt")) {
-                    String diffReg = getNewRegister("nt");
+                    String diffReg = "a" + getNewRegister("nt");
                     emit($code, "    feq.d " + diffReg + ", " + $finReg + ", " + $b.finReg );
                     emit($code, "    xori " + diffReg + ", " + diffReg + ", 1");
                     $finReg = diffReg;
@@ -2387,20 +2434,24 @@ factor [String register] returns [boolean hasKnownValue, String type, float valu
             $finReg = $register;
             $code = generateLoadId($finReg, currentId, $type);
         }
-    | arrayAccess
+    |arrayAccess
         {
+            $code = $arrayAccess.code;
+            
+            if ($arrayAccess.type.equals("flt")) {
+                emit($code, "    fld fa0, 0(" + $arrayAccess.finReg + ")");
+                $finReg = "fa0";
+            } else {
+                emit($code, "    lw a0, 0(" + $arrayAccess.finReg + ")");
+                $finReg = "a0";
+            }
+
             $hasKnownValue = $arrayAccess.hasKnownValue;
             $type = $arrayAccess.type;
             $value = $arrayAccess.value;
             $content = $arrayAccess.content;
             $isArray = false;
             $is2DArray = false;
-            $code = $arrayAccess.code;
-            if ($type.equals("flt")) {
-                $finReg = "fa0";
-            } else {
-                $finReg = "a0";
-            }
         }
     | '(' expr[$register] ')'
         { 
@@ -2652,115 +2703,76 @@ primitiveDT returns [String type]:
 arrayDT returns [String type]: 
     primitiveDT L_SQBR R_SQBR { $type = $primitiveDT.type + "[]"; }
     | primitiveDT L_SQBR R_SQBR L_SQBR R_SQBR { $type = $primitiveDT.type + "[][]"; };
-arrayAccess returns [
-    boolean hasKnownValue,
-    String type,
-    float value,
-    String content,
-    boolean isArray,
-    boolean is2DArray,
-    List<Object> arrayValues,
-    List<List<Object>> array2DValues,
-    StringBuilder code,
-    String arrayName,
-    Token arrayCtx,
-    String indexCode
-]:
-    // 1D Array Access: x = arr[i]
-    id=DNT L_SQBR e1=expr["a0"] R_SQBR
-    {
-        $arrayName = $id.getText();
-        $arrayCtx = $id;
-        $code = new StringBuilder();
-        
-        // Calculate Index (Result in a0)
-        emit($code, $e1.code);
-        if (!$e1.finReg.equals("a0")) {
-            emit($code, "    mv a0, " + $e1.finReg);
+arrayAccess returns [boolean hasKnownValue, String type, float value, String content, StringBuilder code, String finReg] : 
+    id=DNT L_SQBR index=additiveExpr["a0"] R_SQBR
+    (
+        {
+             $code = new StringBuilder();
+             // --- Symbol Table Lookup ---
+             Identifier arrayId = null;
+             String name = $id.getText();
+             
+             // Search scopes for array
+             for(int i = scopeStack.size()-1; i >= 0; i--){
+                if(scopeStack.get(i).table.containsKey(name)){
+                    arrayId = scopeStack.get(i).table.get(name);
+                    break;
+                }
+             }
+
+             if (arrayId == null) {
+                 // error($id, "Array '" + name + "' used before declaration.");
+                 $type = "nt"; // fallback
+             } else {
+                 $type = arrayId.type.replace("[]", ""); // "flt[]" -> "flt"
+             }
+
+             // --- Code Generation ---
+             $code.append($index.code);
+
+             emit($code, "    la t0, " + ID_PREFIX + name);
+             emit($code, "    lw t0, 0(t0)"); // Load Heap Pointer
+
+             int size = ($type != null && $type.equals("flt")) ? 8 : 4;
+             emit($code, "    li t1, " + size);
+             emit($code, "    mul t2, " + $index.finReg + ", t1");
+             
+             emit($code, "    add t0, t0, t2"); // t0 now holds the ADDRESS of T[i]
+
+             $finReg = "t0"; 
         }
+    |
+        L_SQBR index2=additiveExpr["a0"] R_SQBR
+        {
+             $code = new StringBuilder();
+             // --- Symbol Table Lookup ---
+             Identifier arrayId = null;
+             String name = $id.getText();
+             for(int i = scopeStack.size()-1; i >= 0; i--){
+                if(scopeStack.get(i).table.containsKey(name)){
+                    arrayId = scopeStack.get(i).table.get(name);
+                    break;
+                }
+             }
+             if (arrayId != null) $type = arrayId.type.replace("[][]", "");
 
-        // Address Calculation & Load
-        Identifier currId = lookupIdentifier($arrayName);
-        if (currId == null) {
-            error($id, "Array '" + $arrayName + "' used before declaration.");
-            $type = "nt"; // Default safe type
-        } else if (!currId.isArray) {
-            error($id, "'" + $arrayName + "' is not a 1D array.");
-            $type = "nt";
-        } else {
-            // Determine the element type and size
-            $type = currId.type.substring(0, currId.type.length() - 2); // remove "[]"
-            int elemSize = getElementSize($type); // Helper method
-
-            emit($code, "    # Array Access 1D: " + $arrayName);
-            emit($code, "    la t0, " + ID_PREFIX + $arrayName);
-            emit($code, "    lw t0, 0(t0)");       // Load Base Pointer (Heap Address)
-            
-            emit($code, "    li t1, " + elemSize);
-            emit($code, "    mul t2, a0, t1");     // Offset = Index * ElementSize
-            emit($code, "    add t0, t0, t2");     // Address = Base + Offset
-
-            // Load the Value into Register (a0 or fa0)
-            if ($type.equals("flt")) {
-                emit($code, "    fld fa0, 0(t0)");
-            } else if ($type.equals("chr")) {
-                emit($code, "    lb a0, 0(t0)");
-            } else {
-                emit($code, "    lw a0, 0(t0)");
-            }
+             // --- Code Generation ---
+             $code.append($index.code); 
+             emit($code, "    la t0, " + ID_PREFIX + name);
+             emit($code, "    lw t0, 0(t0)"); // Spine Base
+             
+             emit($code, "    slli t1, " + $index.finReg + ", 2"); // Row * 4
+             emit($code, "    add t0, t0, t1");
+             emit($code, "    lw t0, 0(t0)"); // Load Row Pointer
+             
+             $code.append($index2.code); 
+             int size = ($type != null && $type.equals("flt")) ? 8 : 4;
+             emit($code, "    li t1, " + size);
+             emit($code, "    mul t2, " + $index2.finReg + ", t1");
+             
+             emit($code, "    add t0, t0, t2"); // t0 = Address of T[r][c]
+             
+             $finReg = "t0";
         }
-        $hasKnownValue = false;
-    }
-    | 
-    // 2D Array Access: x = arr[row][col]
-    id=DNT L_SQBR e2=expr["a0"] R_SQBR L_SQBR e3=expr["a0"] R_SQBR 
-    {
-        $arrayName = $id.getText();
-        $arrayCtx = $id;
-        $code = new StringBuilder();
-
-        // Calculate Indices
-        emit($code, $e2.code); // Row Index -> a0
-        emit($code, "    mv t3, a0"); // Save Row Index to t3
-        
-        emit($code, $e3.code); // Col Index -> a0
-        emit($code, "    mv t4, a0"); // Save Col Index to t4
-
-        // Address Calculation & Load
-        Identifier currId = lookupIdentifier($arrayName);
-        if (currId == null) {
-            error($id, "Array '" + $arrayName + "' used before declaration.");
-            $type = "nt";
-        } else if (!currId.is2DArray) {
-            error($id, "'" + $arrayName + "' is not a 2D array.");
-            $type = "nt";
-        } else {
-            $type = currId.type.substring(0, currId.type.length() - 4); // remove "[][]"
-            int elemSize = getElementSize($type);
-
-            emit($code, "    # Array Access 2D: " + $arrayName);
-            emit($code, "    la t0, " + ID_PREFIX + $arrayName);
-            emit($code, "    lw t0, 0(t0)");       // Load Table Base
-            
-            // Dereference Row Pointer
-            emit($code, "    slli t3, t3, 2");     // RowOffset = RowIndex * 4 bytes
-            emit($code, "    add t0, t0, t3");     // Addr of Row Pointer
-            emit($code, "    lw t0, 0(t0)");       // Load Actual Row Address
-            
-            // Calculate Column Offset
-            emit($code, "    li t1, " + elemSize);
-            emit($code, "    mul t4, t4, t1");     // ColOffset = ColIndex * ElementSize
-            emit($code, "    add t0, t0, t4");     // Final Address
-
-            // Load the Value
-            if ($type.equals("flt")) {
-                emit($code, "    fld fa0, 0(t0)");
-            } else if ($type.equals("chr")) {
-                emit($code, "    lb a0, 0(t0)");
-            } else {
-                emit($code, "    lw a0, 0(t0)");
-            }
-        }
-        $hasKnownValue = false;
-    }
+    )
 ;

@@ -1,41 +1,68 @@
-// Program 4: Temperature analyzer
+// Problem 4 - Temperature Analyzer (1D Arrays)
 
-nt n = scnNT;
+nt n; 
 
-whl(n <= 0){
-    prnt("Array size N must be positive. Try again.");
+//input 
+prnt("Enter amount of days: ");
+whl(1){
     n = scnNT;
+    f(n>0){
+        brk;
+    }
+    prnt("Array size N must be positive. Try again.");
 }
 
-//make array
-flt temps[n];
+flt T[n];
 
-fr(nt input = 0; input < n; input++;){
-    //fill array
-    flt value = scnFLT;
-    temps[input] = scnFLT;
+// Read the temperatures
+nt i; 
+fr(i = 0; i < n; i++) {
+    prnt("Enter temp for day ", i, ": ");
+    T[i] = scnFLT;
 }
 
-flt mean = input[0];
-flt min = input[0];
-flt max = input[0];
-fr(nt x = 0; x < n; x++;){
-    //find mean
+// Compute mean, min, and max 
+flt sum;
+sum = 0.0;
 
-    //find min
+flt min;
+flt max;
+flt current;
 
-    //find max
+min = T[0];
+max = T[0];
 
+fr(i = 0; i < n; i++) {
+    current = T[i];
+    
+    // Accumulate Sum
+    sum = sum + current;
+    
+    // Check Min
+    f(current < min) {
+        min = current;
+    }
+    
+    // Check Max
+    f(current > max) {
+        max = current;
+    }
 }
+flt mean;
+mean = sum / n;
 
-nt abvmean = 0;
-fr(nt x = 0; x < n; x++){
-    f(x > mean){
-        abvmean = abvmean + 1;
+// Count the days above mean
+nt count;
+count = 0;
+
+fr(i = 0; i < n; i++) {
+    f(T[i] > mean) {
+        count = count + 1;
     }
 }
 
-prnt("mean ", mean);
-prnt("min ", min);
-prnt("max ", max);
-prnt("above mean ", abvmean);
+// Print the Results
+prnt("mean = ", mean);
+prnt("min = ", min);
+prnt("max = ", max);
+prnt("above_mean = ", count);
